@@ -2,3 +2,13 @@
 *.o
 .depends
 fmopl.inc
+disks/**
+*.bin
+.DS_Store
+Info.plist
+*.yml
+tiny386
+tiny386_headless
+wifikbd
+c_cpp_properties.json
+config.ini
