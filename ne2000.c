@@ -207,8 +207,8 @@ static void ne2000_update_irq(NE2000State *s)
     sisr = atomic_load_explicit(&(s->isr), memory_order_relaxed);
     isr = (sisr & s->imr) & 0x7f;
 #if defined(DEBUG_NE2000)
-    printf("NE2000: Set IRQ to %d (%02x %02x)\n",
-           isr ? 1 : 0, sisr, s->imr);
+    printf("NE2000: Set IRQ to %d (%02x %02x) %d\n",
+           isr ? 1 : 0, sisr, s->imr, s->irq);
 #endif
     s->set_irq(s->pic, s->irq, (isr != 0));
 }

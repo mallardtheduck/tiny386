@@ -117,7 +117,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 // MMX
 #define SIMD_PqQq_VxWx() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -129,7 +129,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 			TRY_SSE2(fpu_xmm_rr(cpu->fpu, cpu, b1, reg, rm)); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (opsz16 == code16) /* NP */ { \
 			TRY(fpu_mmx_rm(cpu->fpu, cpu, b1, reg, curr_seg, addr)); \
 		} else /* 66 */ { \
@@ -139,7 +139,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_QqPq_WxVx() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -151,7 +151,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 			TRY_SSE2(fpu_xmm_rr(cpu->fpu, cpu, b1, rm, reg)); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (opsz16 == code16) /* NP */ { \
 			TRY(fpu_mmx_mr(cpu->fpu, cpu, b1, reg, curr_seg, addr)); \
 		} else /* 66 */ { \
@@ -161,13 +161,13 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_GRPA() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
 	u8 imm8; \
 	if (rep) THROW0(EX_UD); \
 	if (mod == 3) { \
-		TRY(fetch8(cpu, &imm8)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
 		if (opsz16 == code16) /* NP */ { \
 			TRY(fpu_mmx_ri(cpu->fpu, cpu, b1, (modrm >> 3) & 7, rm, imm8)); \
 		} else /* 66 */ { \
@@ -179,7 +179,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_LOAD() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -196,8 +196,8 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 		} \
 	} else { \
 		uint32_t lo; \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
-		TRY(cpu_load32(cpu, curr_seg, addr, &lo)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr, &lo)); \
 		if (opsz16 == code16) /* NP */ { \
 			fpu_mmx_set(cpu->fpu, reg, lo); \
 		} else /* 66 */ { \
@@ -211,7 +211,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_STORE() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -230,21 +230,21 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 			THROW0(EX_NM); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				uint64_t v = fpu_mmx_get(cpu->fpu, reg); \
-				TRY(cpu_store32(cpu, curr_seg, addr, v)); \
+				TRY(cpu_store32(CPU_PASSC curr_seg, addr, v)); \
 			} else /* 66 */ { \
-				TRY_SSE2(cpu_store32(cpu, curr_seg, addr, \
+				TRY_SSE2(cpu_store32(CPU_PASSC curr_seg, addr, \
 					 fpu_xmm_get_u32(cpu->fpu, reg)[0])); \
 			} \
 		} else if (rep == 1) /* F3 */ { \
 			/* MOVQ xmm1, m64 */ \
 			uint32_t lo, hi, *x; \
 			(void) lo, (void) hi, (void) x; \
-			TRY_SSE2(cpu_load32(cpu, curr_seg, addr, &lo)); \
-			TRY_SSE2(cpu_load32(cpu, curr_seg, addr + 4, &hi)); \
+			TRY_SSE2(cpu_load32(CPU_PASSC curr_seg, addr, &lo)); \
+			TRY_SSE2(cpu_load32(CPU_PASSC curr_seg, addr + 4, &hi)); \
 			TRY_SSE2(x = fpu_xmm_get_u32(cpu->fpu, reg), \
 				 x[0] = lo, x[1] = hi, x[2] = 0, x[3] = 0, 1); \
 		} else /* F2 */ { \
@@ -257,7 +257,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 // actually SSE
 #define SIMD_PINSRW() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -265,16 +265,16 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 	if (rep) THROW0(EX_UD); \
 	if (opsz16 == code16) /* NP */ { \
 		if (mod == 3) { \
-			TRY(fetch8(cpu, &imm8)); \
+			TRY(fetch8(CPU_PASSC &imm8)); \
 			int sh = (imm8 & 3) * 16; \
 			uint64_t mask = 0xffffull << sh; \
 			uint64_t v = (((uint64_t) REGi(rm)) << sh) & mask; \
 			uint64_t w = fpu_mmx_get(cpu->fpu, reg) & ~mask; \
 			fpu_mmx_set(cpu->fpu, reg, v | w); \
 		} else { \
-			TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
-			TRY(fetch8(cpu, &imm8)); \
-			TRY(translate16(cpu, &meml, 1, curr_seg, addr)); \
+			TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
+			TRY(fetch8(CPU_PASSC &imm8)); \
+			TRY(translate16(CPU_PASSC &meml, 1, curr_seg, addr)); \
 			int sh = (imm8 & 3) * 16; \
 			uint64_t mask = 0xffffull << sh; \
 			uint64_t v = (((uint64_t) laddr16(&meml)) << sh) & mask; \
@@ -286,13 +286,13 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 		(void) w; \
 		TRY_SSE2(w = fpu_xmm_get_u16(cpu->fpu, reg), 1); \
 		if (mod == 3) { \
-			TRY(fetch8(cpu, &imm8)); \
+			TRY(fetch8(CPU_PASSC &imm8)); \
 			int sh = (imm8 & 7); \
 			w[sh] = REGi(rm); \
 		} else { \
-			TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
-			TRY(fetch8(cpu, &imm8)); \
-			TRY(translate16(cpu, &meml, 1, curr_seg, addr)); \
+			TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
+			TRY(fetch8(CPU_PASSC &imm8)); \
+			TRY(translate16(CPU_PASSC &meml, 1, curr_seg, addr)); \
 			int sh = (imm8 & 7); \
 			w[sh] = laddr16(&meml); \
 		} \
@@ -300,14 +300,14 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_PEXTRW() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
 	u8 imm8; \
 	if (rep) THROW0(EX_UD); \
 	if (mod == 3) { \
-		TRY(fetch8(cpu, &imm8)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
 		if (opsz16 == code16) /* NP */ { \
 			uint64_t v = fpu_mmx_get(cpu->fpu, rm); \
 			REGi(reg) = (v >> ((imm8 & 3) * 16)) & 0xffff; \
@@ -336,13 +336,13 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_PSHUFW() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
 	u8 imm8; \
 	if (mod == 3) { \
-		TRY(fetch8(cpu, &imm8)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
 		uint64_t s = fpu_mmx_get(cpu->fpu, rm); \
 		uint64_t w = 0; \
 		w |= (s >> (((imm8 >> 0) & 3) * 16) & 0xffff) << 0; \
@@ -352,11 +352,11 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 		fpu_mmx_set(cpu->fpu, reg, w); \
 	} else { \
 		uint64_t s; \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
-		TRY(fetch8(cpu, &imm8)); \
-		TRY(translate32(cpu, &meml, 1, curr_seg, addr)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
+		TRY(translate32(CPU_PASSC &meml, 1, curr_seg, addr)); \
 		s = laddr32(&meml); \
-		TRY(translate32(cpu, &meml, 1, curr_seg, addr + 4)); \
+		TRY(translate32(CPU_PASSC &meml, 1, curr_seg, addr + 4)); \
 		s |= ((uint64_t) laddr32(&meml)) << 32; \
 		uint64_t w = 0; \
 		w |= (s >> (((imm8 >> 0) & 3) * 16) & 0xffff) << 0; \
@@ -368,7 +368,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_PMOVMSKB() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -405,7 +405,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_MASKMOVQ_DQU() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -419,7 +419,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 				if ((mm2 >> 7) & 1) { \
 					uword addr = REGi(7) + i; \
 					if (adsz16) addr = addr & 0xffff; \
-					TRY(cpu_store8(cpu, SEG_DS, addr, mm1)); \
+					TRY(cpu_store8(CPU_PASSC SEG_DS, addr, mm1)); \
 				} \
 				mm1 >>= 8; \
 				mm2 >>= 8; \
@@ -436,7 +436,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 #ifdef I386_ENABLE_SSE
 #define SIMD_VxWx() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -453,7 +453,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 			TRY_SSE2(fpu_xmmsf64_rr(cpu->fpu, cpu, b1, reg, rm)); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				TRY(fpu_xmmpf32_rm(cpu->fpu, cpu, b1, reg, curr_seg, addr)); \
@@ -469,7 +469,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_VxWx_S() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -484,7 +484,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 			THROW0(EX_UD); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				TRY(fpu_xmmsf32_rm(cpu->fpu, cpu, b1, reg, curr_seg, addr)); \
@@ -498,7 +498,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_VxWx_P() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -515,7 +515,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 			TRY(fpu_xmmpf32_rr(cpu->fpu, cpu, b1, reg, rm)); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				THROW0(EX_UD); \
@@ -531,7 +531,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_WxVx() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -548,7 +548,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 			TRY_SSE2(fpu_xmmsf64_rr(cpu->fpu, cpu, b1, rm, reg)); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				TRY(fpu_xmmpf32_mr(cpu->fpu, cpu, b1, reg, curr_seg, addr)); \
@@ -564,12 +564,12 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_VxWxIb() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
 	u8 imm8; \
 	if (mod == 3) { \
-		TRY(fetch8(cpu, &imm8)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				TRY(fpu_xmmpf32_rri(cpu->fpu, cpu, b1, (modrm >> 3) & 7, rm, imm8)); \
@@ -587,7 +587,7 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 
 #define SIMD_CVTI2S_I2D() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -608,30 +608,30 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr);
 			fpu_xmmsf64_set_s32(cpu->fpu, reg, REGi(rm)); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				uint32_t lo, hi; \
-				TRY(cpu_load32(cpu, curr_seg, addr, &lo)); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 4, &hi)); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr, &lo)); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &hi)); \
 				uint64_t v = (((uint64_t) hi) << 32) | lo; \
 				fpu_xmmpf32_set_s32(cpu->fpu, reg, v); \
 			} else /* 66 */ { \
 				/* CVTPI2PD (SSE2) */ \
 				uint32_t lo, hi; \
-				TRY(cpu_load32(cpu, curr_seg, addr, &lo)); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 4, &hi)); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr, &lo)); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &hi)); \
 				uint64_t v = (((uint64_t) hi) << 32) | lo; \
 				fpu_xmmpf64_set_s32(cpu->fpu, reg, v); \
 			} \
 		} else if (rep == 1) /* F3 */ { \
 			uint32_t v; \
-			TRY(cpu_load32(cpu, curr_seg, addr, &v)); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr, &v)); \
 			fpu_xmmsf32_set_s32(cpu->fpu, reg, v); \
 		} else { \
 			/* CVTSI2SD (SSE2) */ \
 			uint32_t v; \
-			TRY(cpu_load32(cpu, curr_seg, addr, &v)); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr, &v)); \
 			fpu_xmmsf64_set_s32(cpu->fpu, reg, v); \
 		} \
 	}
@@ -649,7 +649,7 @@ static int32_t trunci32(double val)
 
 #define SIMD_CVTS2I_D2I() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -702,12 +702,12 @@ static int32_t trunci32(double val)
 			REGi(reg) = trunci32(v); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				union {float f; uint32_t v;} u[2]; \
-				TRY(cpu_load32(cpu, curr_seg, addr, &(u[0].v))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 4, &(u[1].v))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(u[0].v))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(u[1].v))); \
 				/* TODO: respect mxcsr */ \
 				if (b1 == 0x2d) { \
 					u[0].f = nearbyintf(u[0].f); \
@@ -720,10 +720,10 @@ static int32_t trunci32(double val)
 			} else /* 66 */ { \
 				/* CVTPD2PI (SSE2) */ \
 				union {double f; uint32_t v[2];} u[2]; \
-				TRY(cpu_load32(cpu, curr_seg, addr, &(u[0].v[0]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 4, &(u[0].v[1]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 8, &(u[1].v[0]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 12, &(u[1].v[1]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(u[0].v[0]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(u[0].v[1]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 8, &(u[1].v[0]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 12, &(u[1].v[1]))); \
 				/* TODO: respect mxcsr */ \
 				if (b1 == 0x2d) { \
 					u[0].f = nearbyint(u[0].f); \
@@ -736,7 +736,7 @@ static int32_t trunci32(double val)
 			} \
 		} else if (rep == 1) /* F3 */ { \
 			union {float f; uint32_t v;} u; \
-			TRY(cpu_load32(cpu, curr_seg, addr, &(u.v))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(u.v))); \
 			/* TODO: respect mxcsr */ \
 			if (b1 == 0x2d) { \
 				u.f = nearbyintf(u.f); \
@@ -745,8 +745,8 @@ static int32_t trunci32(double val)
 		} else /* F2 */ { \
 			/* CVTSD2SI (SSE2) */ \
 			union {double f; uint32_t v[2];} u; \
-			TRY(cpu_load32(cpu, curr_seg, addr, &(u.v[0]))); \
-			TRY(cpu_load32(cpu, curr_seg, addr + 4, &(u.v[1]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(u.v[0]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(u.v[1]))); \
 			/* TODO: respect mxcsr */ \
 			if (b1 == 0x2d) { \
 				u.f = nearbyint(u.f); \
@@ -757,7 +757,7 @@ static int32_t trunci32(double val)
 
 #define SIMD_MOVMSKP() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -784,7 +784,7 @@ static int32_t trunci32(double val)
 	}
 
 #define SIMD_GRP15() \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -798,16 +798,16 @@ static int32_t trunci32(double val)
 		THROW0(EX_UD); \
 	} else { \
 		if ((cpu->cr0 & 0xc) && reg < 2) THROW0(EX_NM); \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		TRY(fpu_xmm_grp15(cpu->fpu, cpu, reg, curr_seg, addr)); \
 	}
 
 #define SIMD_PREFETCH() \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
 	if (mod != 3) { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 	}
 
 #endif /* I386_ENABLE_SSE */
@@ -817,21 +817,21 @@ static int32_t trunci32(double val)
 
 #define MOVNTI() \
 	if (opsz16 != code16 || rep) THROW0(EX_UD); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
 	if (mod == 3) { \
 		THROW0(EX_UD); \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
-		TRY(translate32(cpu, &meml, 2, curr_seg, addr)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(translate32(CPU_PASSC &meml, 2, curr_seg, addr)); \
 		saddr32(&meml, lreg32(reg)); \
 	}
 
 #define MOVQ_DQ() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -855,14 +855,14 @@ static int32_t trunci32(double val)
 			fpu_mmx_set(cpu->fpu, reg, x[0]); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				THROW0(EX_UD); \
 			} else /* 66 */ { \
 				uint32_t *x = fpu_xmm_get_u32(cpu->fpu, reg); \
-				TRY(cpu_store32(cpu, curr_seg, addr, x[0])); \
-				TRY(cpu_store32(cpu, curr_seg, addr + 4, x[1])); \
+				TRY(cpu_store32(CPU_PASSC curr_seg, addr, x[0])); \
+				TRY(cpu_store32(CPU_PASSC curr_seg, addr + 4, x[1])); \
 			} \
 		} else { \
 			THROW0(EX_NM); \
@@ -879,7 +879,7 @@ static int32_t trunci32(double val)
 			if ((mm2 >> 7) & 1) { \
 				uword addr = REGi(7) + 8 * k + i; \
 				if (adsz16) addr = addr & 0xffff; \
-				TRY(cpu_store8(cpu, SEG_DS, addr, mm1)); \
+				TRY(cpu_store8(CPU_PASSC SEG_DS, addr, mm1)); \
 			} \
 			mm1 >>= 8; \
 			mm2 >>= 8; \
@@ -888,13 +888,13 @@ static int32_t trunci32(double val)
 
 #define SSE2_PSHUFD() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
 	u8 imm8; \
 	if (mod == 3) { \
-		TRY(fetch8(cpu, &imm8)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
 		uint32_t *s = fpu_xmm_get_u32(cpu->fpu, rm); \
 		uint32_t *d = fpu_xmm_get_u32(cpu->fpu, reg); \
 		uint32_t w[4]; \
@@ -908,12 +908,12 @@ static int32_t trunci32(double val)
 		d[3] = w[3]; \
 	} else { \
 		uint32_t s[4]; \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
-		TRY(fetch8(cpu, &imm8)); \
-		TRY(cpu_load32(cpu, curr_seg, addr, s)); \
-		TRY(cpu_load32(cpu, curr_seg, addr + 4, s + 1)); \
-		TRY(cpu_load32(cpu, curr_seg, addr + 8, s + 2)); \
-		TRY(cpu_load32(cpu, curr_seg, addr + 12, s + 3)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr, s)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, s + 1)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr + 8, s + 2)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr + 12, s + 3)); \
 		uint32_t *d = fpu_xmm_get_u32(cpu->fpu, reg); \
 		d[0] = s[(imm8 >> 0) & 3]; \
 		d[1] = s[(imm8 >> 2) & 3]; \
@@ -923,13 +923,13 @@ static int32_t trunci32(double val)
 
 #define SSE2_PSHUFLW() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
 	u8 imm8; \
 	if (mod == 3) { \
-		TRY(fetch8(cpu, &imm8)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
 		uint16_t *s = fpu_xmm_get_u16(cpu->fpu, rm); \
 		uint16_t *d = fpu_xmm_get_u16(cpu->fpu, reg); \
 		uint16_t w[4]; \
@@ -947,12 +947,12 @@ static int32_t trunci32(double val)
 		d[7] = s[7]; \
 	} else { \
 		union { uint16_t w[8]; uint32_t v[4]; } s; \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
-		TRY(fetch8(cpu, &imm8)); \
-		TRY(cpu_load32(cpu, curr_seg, addr, s.v)); \
-		TRY(cpu_load32(cpu, curr_seg, addr + 4, s.v + 1)); \
-		TRY(cpu_load32(cpu, curr_seg, addr + 8, s.v + 2)); \
-		TRY(cpu_load32(cpu, curr_seg, addr + 12, s.v + 3)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr, s.v)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, s.v + 1)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr + 8, s.v + 2)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr + 12, s.v + 3)); \
 		uint16_t *d = fpu_xmm_get_u16(cpu->fpu, reg); \
 		d[0] = s.w[(imm8 >> 0) & 3]; \
 		d[1] = s.w[(imm8 >> 2) & 3]; \
@@ -966,13 +966,13 @@ static int32_t trunci32(double val)
 
 #define SSE2_PSHUFHW() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
 	u8 imm8; \
 	if (mod == 3) { \
-		TRY(fetch8(cpu, &imm8)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
 		uint16_t *s = fpu_xmm_get_u16(cpu->fpu, rm); \
 		uint16_t *d = fpu_xmm_get_u16(cpu->fpu, reg); \
 		uint16_t w[4]; \
@@ -990,12 +990,12 @@ static int32_t trunci32(double val)
 		d[7] = w[3]; \
 	} else { \
 		union { uint16_t w[8]; uint32_t v[4]; } s; \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
-		TRY(fetch8(cpu, &imm8)); \
-		TRY(cpu_load32(cpu, curr_seg, addr, s.v)); \
-		TRY(cpu_load32(cpu, curr_seg, addr + 4, s.v + 1)); \
-		TRY(cpu_load32(cpu, curr_seg, addr + 8, s.v + 2)); \
-		TRY(cpu_load32(cpu, curr_seg, addr + 12, s.v + 3)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr, s.v)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, s.v + 1)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr + 8, s.v + 2)); \
+		TRY(cpu_load32(CPU_PASSC curr_seg, addr + 12, s.v + 3)); \
 		uint16_t *d = fpu_xmm_get_u16(cpu->fpu, reg); \
 		d[0] = s.w[0]; \
 		d[1] = s.w[1]; \
@@ -1009,7 +1009,7 @@ static int32_t trunci32(double val)
 
 #define CVTS2D_D2S() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -1046,23 +1046,23 @@ static int32_t trunci32(double val)
 			*ss = (float) sd; \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				/* CVTPS2PD */ \
 				union {float f; uint32_t v;} ps[2]; \
-				TRY(cpu_load32(cpu, curr_seg, addr, &(ps[0].v))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 4, &(ps[1].v))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(ps[0].v))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(ps[1].v))); \
 				double *pd = fpu_xmm_get_f64(cpu->fpu, reg); \
 				pd[0] = (double) ps[0].f; \
 				pd[1] = (double) ps[1].f; \
 			} else /* 66 */ { \
 				/* CVTPD2PS */ \
 				union {double f; uint32_t v[2];} pd[2]; \
-				TRY(cpu_load32(cpu, curr_seg, addr, &(pd[0].v[0]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 4, &(pd[0].v[1]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 8, &(pd[1].v[0]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 12, &(pd[1].v[1]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(pd[0].v[0]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(pd[0].v[1]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 8, &(pd[1].v[0]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 12, &(pd[1].v[1]))); \
 				float *ps = fpu_xmm_get_f32(cpu->fpu, reg); \
 				ps[0] = (float) pd[0].f; \
 				ps[1] = (float) pd[1].f; \
@@ -1072,14 +1072,14 @@ static int32_t trunci32(double val)
 		} else if (rep == 1) /* F3 */ { \
 			/* CVTSS2SD */ \
 			union {float f; uint32_t v;} ss; \
-			TRY(cpu_load32(cpu, curr_seg, addr, &(ss.v))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(ss.v))); \
 			double *sd = fpu_xmm_get_f64(cpu->fpu, reg); \
 			*sd = (double) ss.f; \
 		} else /* F2 */ { \
 			/* CVTSD2SS */ \
 			union {double f; uint32_t v[2];} sd; \
-			TRY(cpu_load32(cpu, curr_seg, addr, &(sd.v[0]))); \
-			TRY(cpu_load32(cpu, curr_seg, addr + 4, &(sd.v[1]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(sd.v[0]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(sd.v[1]))); \
 			float *ss = fpu_xmm_get_f32(cpu->fpu, reg); \
 			*ss = (float) sd.f; \
 		} \
@@ -1087,7 +1087,7 @@ static int32_t trunci32(double val)
 
 #define CVTDQ_PS() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -1135,15 +1135,15 @@ static int32_t trunci32(double val)
 			THROW0(EX_UD); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				/* CVTDQ2PS */ \
 				uint32_t dq[4]; \
-				TRY(cpu_load32(cpu, curr_seg, addr, &(dq[0]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 4, &(dq[1]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 8, &(dq[2]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 12, &(dq[3]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(dq[0]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(dq[1]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 8, &(dq[2]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 12, &(dq[3]))); \
 				float *ps = fpu_xmm_get_f32(cpu->fpu, reg); \
 				int32_t dq0 = dq[0]; \
 				int32_t dq1 = dq[1]; \
@@ -1156,10 +1156,10 @@ static int32_t trunci32(double val)
 			} else /* 66 */ { \
 				/* CVTPS2DQ */ \
 				union { float f; uint32_t v; } ps[4]; \
-				TRY(cpu_load32(cpu, curr_seg, addr, &(ps[0].v))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 4, &(ps[1].v))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 8, &(ps[2].v))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 12, &(ps[3].v))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(ps[0].v))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(ps[1].v))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 8, &(ps[2].v))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 12, &(ps[3].v))); \
 				uint32_t *dq = fpu_xmm_get_u32(cpu->fpu, reg); \
 				/* TODO: respect mxcsr */ \
 				float ps0 = nearbyintf(ps[0].f); \
@@ -1174,10 +1174,10 @@ static int32_t trunci32(double val)
 		} else if (rep == 1) /* F3 */ { \
 			/* CVTTPS2DQ */ \
 			union { float f; uint32_t v; } ps[4]; \
-			TRY(cpu_load32(cpu, curr_seg, addr, &(ps[0].v))); \
-			TRY(cpu_load32(cpu, curr_seg, addr + 4, &(ps[1].v))); \
-			TRY(cpu_load32(cpu, curr_seg, addr + 8, &(ps[2].v))); \
-			TRY(cpu_load32(cpu, curr_seg, addr + 12, &(ps[3].v))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(ps[0].v))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(ps[1].v))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr + 8, &(ps[2].v))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr + 12, &(ps[3].v))); \
 			uint32_t *dq = fpu_xmm_get_u32(cpu->fpu, reg); \
 			float ps0 = ps[0].f; \
 			float ps1 = ps[1].f; \
@@ -1194,7 +1194,7 @@ static int32_t trunci32(double val)
 
 #define CVTDQ_PD() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -1233,17 +1233,17 @@ static int32_t trunci32(double val)
 			dq[3] = 0; \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				THROW0(EX_UD); \
 			} else /* 66 */ { \
 				/* CVTTPD2DQ */ \
 				union { double f; uint32_t v[2]; } pd[2]; \
-				TRY(cpu_load32(cpu, curr_seg, addr, &(pd[0].v[0]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 4, &(pd[0].v[1]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 8, &(pd[1].v[0]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 12, &(pd[1].v[1]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(pd[0].v[0]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(pd[0].v[1]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 8, &(pd[1].v[0]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 12, &(pd[1].v[1]))); \
 				uint32_t *dq = fpu_xmm_get_u32(cpu->fpu, reg); \
 				double pd0 = pd[0].f; \
 				double pd1 = pd[1].f; \
@@ -1255,8 +1255,8 @@ static int32_t trunci32(double val)
 		} else if (rep == 1) /* F3 */ { \
 			/* CVTDQ2PD */ \
 			uint32_t dq[2]; \
-			TRY(cpu_load32(cpu, curr_seg, addr, &(dq[0]))); \
-			TRY(cpu_load32(cpu, curr_seg, addr + 4, &(dq[1]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(dq[0]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(dq[1]))); \
 			double *pd = fpu_xmm_get_f64(cpu->fpu, reg); \
 			int32_t dq0 = dq[0]; \
 			int32_t dq1 = dq[1]; \
@@ -1265,10 +1265,10 @@ static int32_t trunci32(double val)
 		} else /* F2 */ { \
 			/* CVTPD2DQ */ \
 			union { double f; uint32_t v[2]; } pd[2]; \
-			TRY(cpu_load32(cpu, curr_seg, addr, &(pd[0].v[0]))); \
-			TRY(cpu_load32(cpu, curr_seg, addr + 4, &(pd[0].v[1]))); \
-			TRY(cpu_load32(cpu, curr_seg, addr + 8, &(pd[1].v[0]))); \
-			TRY(cpu_load32(cpu, curr_seg, addr + 12, &(pd[1].v[1]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(pd[0].v[0]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(pd[0].v[1]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr + 8, &(pd[1].v[0]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr + 12, &(pd[1].v[1]))); \
 			uint32_t *dq = fpu_xmm_get_u32(cpu->fpu, reg); \
 			/* TODO: respect mxcsr */ \
 			double pd0 = nearbyint(pd[0].f); \
@@ -1290,22 +1290,22 @@ static int32_t trunci32(double val)
 #ifdef I386_ENABLE_SSE3
 #define LDDQU() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
 	if (mod == 3) { \
 		THROW0(EX_UD); \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (rep != 2) { \
 			THROW0(EX_UD); \
 		} else /* F2 */ { \
 			uint32_t *dq = fpu_xmm_get_u32(cpu->fpu, reg); \
-			TRY(cpu_load32(cpu, curr_seg, addr, &(dq[0]))); \
-			TRY(cpu_load32(cpu, curr_seg, addr + 4, &(dq[1]))); \
-			TRY(cpu_load32(cpu, curr_seg, addr + 8, &(dq[2]))); \
-			TRY(cpu_load32(cpu, curr_seg, addr + 12, &(dq[3]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(dq[0]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(dq[1]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr + 8, &(dq[2]))); \
+			TRY(cpu_load32(CPU_PASSC curr_seg, addr + 12, &(dq[3]))); \
 		} \
 	}
 #endif /* I386_ENABLE_SSE3 */
@@ -1354,7 +1354,7 @@ static void XMM_PALIGNR_helper(uint64_t *d, uint64_t *s, int i)
 
 #define SIMD3_PqQq_VxWx() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
@@ -1367,7 +1367,7 @@ static void XMM_PALIGNR_helper(uint64_t *d, uint64_t *s, int i)
 			TRY(fpu_xmm_rr(cpu->fpu, cpu, b2, reg, rm)); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		if (opsz16 == code16) /* NP */ { \
 			TRY(fpu_mmx_rm(cpu->fpu, cpu, b2, reg, curr_seg, addr)); \
 		} else /* 66 */ { \
@@ -1377,13 +1377,13 @@ static void XMM_PALIGNR_helper(uint64_t *d, uint64_t *s, int i)
 
 #define SIMD_PALIGNR() \
 	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
-	TRY(fetch8(cpu, &modrm)); \
+	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
 	u8 imm8; \
 	if (mod == 3) { \
-		TRY(fetch8(cpu, &imm8)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				uint64_t v = fpu_mmx_get(cpu->fpu, reg); \
@@ -1398,23 +1398,23 @@ static void XMM_PALIGNR_helper(uint64_t *d, uint64_t *s, int i)
 			THROW0(EX_UD); \
 		} \
 	} else { \
-		TRY(modsib(cpu, adsz16, mod, rm, &addr, &curr_seg)); \
-		TRY(fetch8(cpu, &imm8)); \
+		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
+		TRY(fetch8(CPU_PASSC &imm8)); \
 		if (rep == 0) { \
 			if (opsz16 == code16) /* NP */ { \
 				uint64_t v = fpu_mmx_get(cpu->fpu, reg); \
 				uint32_t lo, hi; \
-				TRY(cpu_load32(cpu, curr_seg, addr, &lo)); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 4, &hi)); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr, &lo)); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &hi)); \
 				uint64_t w = lo | (((uint64_t) hi) << 32); \
 				fpu_mmx_set(cpu->fpu, reg, PALIGNR_helper(v, w, imm8)); \
 			} else /* 66 */ { \
 				union {uint64_t v64[2]; uint32_t v[4]; } u; \
 				uint64_t *v = fpu_xmm_get_u64(cpu->fpu, reg); \
-				TRY(cpu_load32(cpu, curr_seg, addr, &(u.v[0]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 4, &(u.v[1]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 8, &(u.v[2]))); \
-				TRY(cpu_load32(cpu, curr_seg, addr + 12, &(u.v[3]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr, &(u.v[0]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 4, &(u.v[1]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 8, &(u.v[2]))); \
+				TRY(cpu_load32(CPU_PASSC curr_seg, addr + 12, &(u.v[3]))); \
 				XMM_PALIGNR_helper(v, u.v64, imm8); \
 			} \
 		} else { \
@@ -1966,7 +1966,7 @@ bool fpu_mmx_rr(FPU *fpu, void *cpu, int op, int dst, int src)
 	case 0x11e: d = PABS32(d, s); break;
 #endif
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu_mmx_set(fpu, dst, d);
@@ -1977,9 +1977,9 @@ bool fpu_mmx_rm(FPU *fpu, void *cpu, int op, int dst, int seg, uint32_t addr)
 {
 	uint64_t d = fpu_mmx_get(fpu, dst);
 	uint32_t lo, hi;
-	if(!cpu_load32(cpu, seg, addr, &lo))
+	if(!cpu_load32(CPU_PASSC seg, addr, &lo))
 		return false;
-	if(!cpu_load32(cpu, seg, addr + 4, &hi))
+	if(!cpu_load32(CPU_PASSC seg, addr + 4, &hi))
 		return false;
 	uint64_t s = (((uint64_t) hi) << 32) | lo;
 
@@ -2061,7 +2061,7 @@ bool fpu_mmx_rm(FPU *fpu, void *cpu, int op, int dst, int seg, uint32_t addr)
 	case 0x11e: d = PABS32(d, s); break;
 #endif
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu_mmx_set(fpu, dst, d);
@@ -2078,7 +2078,7 @@ bool fpu_mmx_ri(FPU *fpu, void *cpu, int op, int func, int dst, int imm)
 		case 4: v = PSRA16(v, imm); break;
 		case 6: v = PSLL16(v, imm); break;
 		default:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
@@ -2088,7 +2088,7 @@ bool fpu_mmx_ri(FPU *fpu, void *cpu, int op, int func, int dst, int imm)
 		case 4: v = PSRA32(v, imm); break;
 		case 6: v = PSLL32(v, imm); break;
 		default:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
@@ -2097,12 +2097,12 @@ bool fpu_mmx_ri(FPU *fpu, void *cpu, int op, int func, int dst, int imm)
 		case 2: v = PSRL64(v, imm); break;
 		case 6: v = PSLL64(v, imm); break;
 		default:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu_mmx_set(fpu, dst, v);
@@ -2113,13 +2113,13 @@ bool fpu_mmx_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr)
 {
 	if (op == 0x7f || op == 0xe7) { // MOVQ/MOVNTQ
 		F80 *v = fpu_mm(fpu, src);
-		if (!cpu_store32(cpu, seg, addr, v->mant0))
+		if (!cpu_store32(CPU_PASSC seg, addr, v->mant0))
 			return false;
-		if (!cpu_store32(cpu, seg, addr + 4, v->mant1))
+		if (!cpu_store32(CPU_PASSC seg, addr + 4, v->mant1))
 			return false;
 		return true;
 	}
-	cpu_setexc(cpu, 6, 0);
+	cpu_setexc(CPU_PASSC 6, 0);
 	return false;
 }
 
@@ -2284,13 +2284,13 @@ static void UCOMIsf32(void *cpu, UXMM d, UXMM s)
 	float a = d.f32v[0];
 	float b = s.f32v[0];
 	if (isunordered(a, b)) {
-		cpu_setflags(cpu, ZF | PF | CF, OF | AF | SF);
+		cpu_setflags(CPU_PASSC ZF | PF | CF, OF | AF | SF);
 	} else if (a == b) {
-		cpu_setflags(cpu, ZF, PF | CF | OF | AF | SF);
+		cpu_setflags(CPU_PASSC ZF, PF | CF | OF | AF | SF);
 	} else if (a < b) {
-		cpu_setflags(cpu, CF, ZF | PF | OF | AF | SF);
+		cpu_setflags(CPU_PASSC CF, ZF | PF | OF | AF | SF);
 	} else {
-		cpu_setflags(cpu, 0, ZF | PF | CF | OF | AF | SF);
+		cpu_setflags(CPU_PASSC 0, ZF | PF | CF | OF | AF | SF);
 	}
 }
 
@@ -2368,7 +2368,7 @@ bool fpu_xmmsf32_rr(FPU *fpu, void *cpu, int op, int dst, int src)
 	case 0x16: d = MOVSHDUP(s); break;
 #endif
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -2379,7 +2379,7 @@ bool fpu_xmmsf32_rm(FPU *fpu, void *cpu, int op, int dst, int seg, uint32_t addr
 {
 	UXMM d = fpu->xmm[dst];
 	UXMM s;
-	if(!cpu_load32(cpu, seg, addr, s.u32v))
+	if(!cpu_load32(CPU_PASSC seg, addr, s.u32v))
 		return false;
 
 	switch (op) {
@@ -2400,7 +2400,7 @@ bool fpu_xmmsf32_rm(FPU *fpu, void *cpu, int op, int dst, int seg, uint32_t addr
 	case 0x16: d = MOVSHDUP(s); break;
 #endif
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -2423,12 +2423,12 @@ bool fpu_xmmsf32_rri(FPU *fpu, void *cpu, int op, int dst, int src, int imm)
 		case 6: d = CMPNLEsf32(d, s); break;
 		case 7: d = CMPORDsf32(d, s); break;
 		default:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -2442,10 +2442,10 @@ bool fpu_xmmsf32_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr
 	switch (op) {
 	case 0x11: d.u32v[0] = s.u32v[0]; break; // MOVSS
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
-	if (!cpu_store32(cpu, seg, addr, d.u32v[0]))
+	if (!cpu_store32(CPU_PASSC seg, addr, d.u32v[0]))
 		return false;
 	return true;
 }
@@ -2481,7 +2481,7 @@ bool fpu_xmmpf32_rr(FPU *fpu, void *cpu, int op, int dst, int src)
 	case 0x7d: d = HSUBpf32(d, s); break;
 #endif
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -2495,7 +2495,7 @@ bool fpu_xmmpf32_rm(FPU *fpu, void *cpu, int op, int dst, int seg, uint32_t addr
 	int n = 4;
 	if (op == 0x12 || op == 0x16) n = 2;
 	for (int i = 0; i < n; i++)
-		if(!cpu_load32(cpu, seg, addr + 4 * i, s.u32v + i))
+		if(!cpu_load32(CPU_PASSC seg, addr + 4 * i, s.u32v + i))
 			return false;
 
 	switch (op) {
@@ -2525,7 +2525,7 @@ bool fpu_xmmpf32_rm(FPU *fpu, void *cpu, int op, int dst, int seg, uint32_t addr
 	case 0x7d: d = HSUBpf32(d, s); break;
 #endif
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -2548,14 +2548,14 @@ bool fpu_xmmpf32_rri(FPU *fpu, void *cpu, int op, int dst, int src, int imm)
 		case 6: d = CMPNLEpf32(d, s); break;
 		case 7: d = CMPORDpf32(d, s); break;
 		default:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
 	case 0xc6:
 		d = SHUFpf32(d, s, imm); break;
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -2571,13 +2571,13 @@ bool fpu_xmmpf32_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr
 	case 0x13: d.u32v[0] = s.u32v[0]; d.u32v[1] = s.u32v[1]; break; // MOVLPS
 	case 0x17: d.u32v[0] = s.u32v[2]; d.u32v[1] = s.u32v[3]; break; // MOVHPS
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	int n = 4;
 	if (op == 0x13 || op == 0x17) n = 2;
 	for (int i = 0; i < n; i++)
-		if (!cpu_store32(cpu, seg, addr + 4 * i, d.u32v[i]))
+		if (!cpu_store32(CPU_PASSC seg, addr + 4 * i, d.u32v[i]))
 			return false;
 	return true;
 }
@@ -2634,18 +2634,18 @@ uint16_t *fpu_xmm_get_u16(FPU *fpu, int i)
 bool fpu_xmm_grp15(FPU *fpu, void *cpu, int op, int seg, uint32_t addr)
 {
 	if (!fpu) {
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	switch (op) {
 	case 0: { // FXSAVE
 		uword start = addr;
-		if(!cpu_store16(cpu, seg, addr, fpu->cw))
+		if(!cpu_store16(CPU_PASSC seg, addr, fpu->cw))
 			return false;
 		u16 sw = getsw(fpu);
-		if(!cpu_store16(cpu, seg, addr + 2, sw))
+		if(!cpu_store16(CPU_PASSC seg, addr + 2, sw))
 			return false;
-		if(!cpu_store32(cpu, seg, addr + 16 + 8, fpu->mxcsr))
+		if(!cpu_store32(CPU_PASSC seg, addr + 16 + 8, fpu->mxcsr))
 			return false;
 		start += 32;
 		for (int j = 0; j < 8; j++) {
@@ -2653,20 +2653,20 @@ bool fpu_xmm_grp15(FPU *fpu, void *cpu, int op, int seg, uint32_t addr)
 				fpu->rawst[j] = tof80(fpu->st[j]);
 				fpu->rawtagw &= ~(1 << j);
 			}
-			if (!cpu_store32(cpu, seg, start,
+			if (!cpu_store32(CPU_PASSC seg, start,
 					 fpu->rawst[j].mant0))
 				return false;
-			if (!cpu_store32(cpu, seg, start + 4,
+			if (!cpu_store32(CPU_PASSC seg, start + 4,
 					 fpu->rawst[j].mant1))
 				return false;
-			if (!cpu_store16(cpu, seg, start + 8,
+			if (!cpu_store16(CPU_PASSC seg, start + 8,
 					 fpu->rawst[j].high))
 				return false;
 			start += 16;
 		}
 		for (int j = 0; j < 8; j++) {
 			for (int k = 0; k < 4; k++) {
-				if (!cpu_store32(cpu, seg, start, fpu->xmm[j].u32v[k]))
+				if (!cpu_store32(CPU_PASSC seg, start, fpu->xmm[j].u32v[k]))
 					return false;
 				start += 4;
 			}
@@ -2675,21 +2675,21 @@ bool fpu_xmm_grp15(FPU *fpu, void *cpu, int op, int seg, uint32_t addr)
 	}
 	case 1: { // FXRSTOR
 		uword start = addr;
-		if (!cpu_load16(cpu, seg, addr, &(fpu->cw)))
+		if (!cpu_load16(CPU_PASSC seg, addr, &(fpu->cw)))
 			return false;
 		u16 sw;
-		if (!cpu_load16(cpu, seg, addr + 2, &sw))
+		if (!cpu_load16(CPU_PASSC seg, addr + 2, &sw))
 			return false;
 		setsw(fpu, sw);
 		start += 32;
 		for (int j = 0; j < 8; j++) {
-			if (!cpu_load32(cpu, seg, start,
+			if (!cpu_load32(CPU_PASSC seg, start,
 					&fpu->rawst[j].mant0))
 				return false;
-			if (!cpu_load32(cpu, seg, start + 4,
+			if (!cpu_load32(CPU_PASSC seg, start + 4,
 					&fpu->rawst[j].mant1))
 				return false;
-			if (!cpu_load16(cpu, seg, start + 8,
+			if (!cpu_load16(CPU_PASSC seg, start + 8,
 					&fpu->rawst[j].high))
 				return false;
 			fpu->rawtagr &= ~(1 << j);
@@ -2698,7 +2698,7 @@ bool fpu_xmm_grp15(FPU *fpu, void *cpu, int op, int seg, uint32_t addr)
 		}
 		for (int j = 0; j < 8; j++) {
 			for (int k = 0; k < 4; k++) {
-				if (!cpu_load32(cpu, seg, start, &fpu->xmm[j].u32v[k]))
+				if (!cpu_load32(CPU_PASSC seg, start, &fpu->xmm[j].u32v[k]))
 					return false;
 				start += 4;
 			}
@@ -2707,19 +2707,19 @@ bool fpu_xmm_grp15(FPU *fpu, void *cpu, int op, int seg, uint32_t addr)
 	}
 	case 2: { // LDMXCSR
 		uint32_t mxcsr;
-		if (!cpu_load32(cpu, seg, addr, &mxcsr))
+		if (!cpu_load32(CPU_PASSC seg, addr, &mxcsr))
 			return false;
 		fpu->mxcsr = mxcsr;
 		return true;
 	}
 	case 3: { // STMXCSR
-		return cpu_store32(cpu, seg, addr, fpu->mxcsr);
+		return cpu_store32(CPU_PASSC seg, addr, fpu->mxcsr);
 	}
 	/* SSE2 */
 	case 7: // CLFLUSH
 		return true;
 	}
-	cpu_setexc(cpu, 6, 0);
+	cpu_setexc(CPU_PASSC 6, 0);
 	return false;
 }
 #endif /* I386_ENABLE_SSE */
@@ -2830,13 +2830,13 @@ static void UCOMIsf64(void *cpu, UXMM d, UXMM s)
 	double a = d.f64v[0];
 	double b = s.f64v[0];
 	if (isunordered(a, b)) {
-		cpu_setflags(cpu, ZF | PF | CF, OF | AF | SF);
+		cpu_setflags(CPU_PASSC ZF | PF | CF, OF | AF | SF);
 	} else if (a == b) {
-		cpu_setflags(cpu, ZF, PF | CF | OF | AF | SF);
+		cpu_setflags(CPU_PASSC ZF, PF | CF | OF | AF | SF);
 	} else if (a < b) {
-		cpu_setflags(cpu, CF, ZF | PF | OF | AF | SF);
+		cpu_setflags(CPU_PASSC CF, ZF | PF | OF | AF | SF);
 	} else {
-		cpu_setflags(cpu, 0, ZF | PF | CF | OF | AF | SF);
+		cpu_setflags(CPU_PASSC 0, ZF | PF | CF | OF | AF | SF);
 	}
 }
 
@@ -2893,7 +2893,7 @@ bool fpu_xmmsf64_rr(FPU *fpu, void *cpu, int op, int dst, int src)
 	case 0x12: d = MOVDDUP(s); break;
 #endif
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -2904,9 +2904,9 @@ bool fpu_xmmsf64_rm(FPU *fpu, void *cpu, int op, int dst, int seg, uint32_t addr
 {
 	UXMM d = fpu->xmm[dst];
 	UXMM s;
-	if(!cpu_load32(cpu, seg, addr, s.u32v))
+	if(!cpu_load32(CPU_PASSC seg, addr, s.u32v))
 		return false;
-	if(!cpu_load32(cpu, seg, addr + 4, s.u32v + 1))
+	if(!cpu_load32(CPU_PASSC seg, addr + 4, s.u32v + 1))
 		return false;
 
 	switch (op) {
@@ -2924,7 +2924,7 @@ bool fpu_xmmsf64_rm(FPU *fpu, void *cpu, int op, int dst, int seg, uint32_t addr
 	case 0x12: d = MOVDDUP(s); break;
 #endif
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -2947,12 +2947,12 @@ bool fpu_xmmsf64_rri(FPU *fpu, void *cpu, int op, int dst, int src, int imm)
 		case 6: d = CMPNLEsf64(d, s); break;
 		case 7: d = CMPORDsf64(d, s); break;
 		default:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -2966,12 +2966,12 @@ bool fpu_xmmsf64_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr
 	switch (op) {
 	case 0x11: d.u64v[0] = s.u64v[0]; break; // MOVSD
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
-	if (!cpu_store32(cpu, seg, addr, d.u32v[0]))
+	if (!cpu_store32(CPU_PASSC seg, addr, d.u32v[0]))
 		return false;
-	if (!cpu_store32(cpu, seg, addr + 4, d.u32v[1]))
+	if (!cpu_store32(CPU_PASSC seg, addr + 4, d.u32v[1]))
 		return false;
 	return true;
 }
@@ -3003,7 +3003,7 @@ bool fpu_xmmpf64_rr(FPU *fpu, void *cpu, int op, int dst, int src)
 	case 0x7d: d = HSUBpf64(d, s); break;
 #endif
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -3017,7 +3017,7 @@ bool fpu_xmmpf64_rm(FPU *fpu, void *cpu, int op, int dst, int seg, uint32_t addr
 	int n = 4;
 	if (op == 0x12 || op == 0x16) n = 2;
 	for (int i = 0; i < n; i++)
-		if(!cpu_load32(cpu, seg, addr + 4 * i, s.u32v + i))
+		if(!cpu_load32(CPU_PASSC seg, addr + 4 * i, s.u32v + i))
 			return false;
 
 	switch (op) {
@@ -3045,7 +3045,7 @@ bool fpu_xmmpf64_rm(FPU *fpu, void *cpu, int op, int dst, int seg, uint32_t addr
 	case 0x7d: d = HSUBpf64(d, s); break;
 #endif
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -3068,14 +3068,14 @@ bool fpu_xmmpf64_rri(FPU *fpu, void *cpu, int op, int dst, int src, int imm)
 		case 6: d = CMPNLEpf64(d, s); break;
 		case 7: d = CMPORDpf64(d, s); break;
 		default:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
 	case 0xc6:
 		d = SHUFpf64(d, s, imm); break;
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -3091,13 +3091,13 @@ bool fpu_xmmpf64_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr
 	case 0x13: d.u32v[0] = s.u32v[0]; d.u32v[1] = s.u32v[1]; break; // MOVLPD
 	case 0x17: d.u32v[0] = s.u32v[2]; d.u32v[1] = s.u32v[3]; break; // MOVHPD
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	int n = 4;
 	if (op == 0x13 || op == 0x17) n = 2;
 	for (int i = 0; i < n; i++)
-		if (!cpu_store32(cpu, seg, addr + 4 * i, d.u32v[i]))
+		if (!cpu_store32(CPU_PASSC seg, addr + 4 * i, d.u32v[i]))
 			return false;
 	return true;
 }
@@ -3651,7 +3651,7 @@ bool fpu_xmm_rr(FPU *fpu, void *cpu, int op, int dst, int src)
 	case 0x11e: d = XMM_PABS32(d, s); break;
 #endif
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -3663,7 +3663,7 @@ bool fpu_xmm_rm(FPU *fpu, void *cpu, int op, int dst, int seg, uint32_t addr)
 	UXMM d = fpu->xmm[dst];
 	UXMM s;
 	for (int i = 0; i < 4; i++)
-		if(!cpu_load32(cpu, seg, addr + 4 * i, s.u32v + i))
+		if(!cpu_load32(CPU_PASSC seg, addr + 4 * i, s.u32v + i))
 			return false;
 
 	switch (op) {
@@ -3744,7 +3744,7 @@ bool fpu_xmm_rm(FPU *fpu, void *cpu, int op, int dst, int seg, uint32_t addr)
 	case 0x11e: d = XMM_PABS32(d, s); break;
 #endif
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = d;
@@ -3761,7 +3761,7 @@ bool fpu_xmm_ri(FPU *fpu, void *cpu, int op, int func, int dst, int imm)
 		case 4: v = XMM_PSRA16(v, imm); break;
 		case 6: v = XMM_PSLL16(v, imm); break;
 		default:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
@@ -3771,7 +3771,7 @@ bool fpu_xmm_ri(FPU *fpu, void *cpu, int op, int func, int dst, int imm)
 		case 4: v = XMM_PSRA32(v, imm); break;
 		case 6: v = XMM_PSLL32(v, imm); break;
 		default:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
@@ -3808,12 +3808,12 @@ bool fpu_xmm_ri(FPU *fpu, void *cpu, int op, int func, int dst, int imm)
 			}
 			break;
 		default:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
 	default:
-		cpu_setexc(cpu, 6, 0);
+		cpu_setexc(CPU_PASSC 6, 0);
 		return false;
 	}
 	fpu->xmm[dst] = v;
@@ -3825,11 +3825,11 @@ bool fpu_xmm_mr(FPU *fpu, void *cpu, int op, int src, int seg, uint32_t addr)
 	if (op == 0x7f || op == 0xe7) { // MOVDQA/MOVNTDQ
 		UXMM v = fpu->xmm[src];
 		for (int i = 0; i < 4; i++)
-			if (!cpu_store32(cpu, seg, addr + 4 * i, v.u32v[i]))
+			if (!cpu_store32(CPU_PASSC seg, addr + 4 * i, v.u32v[i]))
 				return false;
 		return true;
 	}
-	cpu_setexc(cpu, 6, 0);
+	cpu_setexc(CPU_PASSC 6, 0);
 	return false;
 }
 #endif /* I386_ENABLE_SSE2 */

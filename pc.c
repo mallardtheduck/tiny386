@@ -8,7 +8,11 @@
 
 static void raise_irq_i386(void *o, PicState2 *s)
 {
+	#ifdef STATIC_ALLOC
+	cpui386_raise_irq();
+	#else
 	cpui386_raise_irq(o);
+	#endif
 }
 
 #if defined(USE_CPUABS)
@@ -105,7 +109,7 @@ static void cpu_enable_fpu(CPUABS *cpu)
 #ifndef MIXER_BUF_LEN
 #define MIXER_BUF_LEN 128
 #endif
-#define PC_STEP_COUNT 512
+#define PC_STEP_COUNT 1024 // 512
 void pcmalloc_init(void *ptr, long len);
 #else
 #define MIXER_BUF_LEN 2048
@@ -578,7 +582,11 @@ void pc_step(PC *pc)
 			pc->full_update = 0;
 	}
 #endif
+#ifdef STATIC_ALLOC
+	cpu_step(PC_STEP_COUNT);
+#else
 	cpu_step(pc->cpu, PC_STEP_COUNT);
+#endif
 }
 
 static int read_irq(void *o)
@@ -709,8 +717,13 @@ PC *pc_new(SimpleFBDrawFunc *redraw, void (*poll)(void *), void *redraw_data,
 	memset(mem, 0, conf->mem_size);
 	pcmalloc_init(mem + 0xa0000, 0xc0000 - 0xa0000);
 	pc->cpu = cpu_new(conf->cpu_gen, mem, conf->mem_size, &cb);
-	if (conf->fpu)
+	if (conf->fpu){
+		#ifdef STATIC_ALLOC
+		cpu_enable_fpu();
+		#else
 		cpu_enable_fpu(pc->cpu);
+		#endif
+	}
 	pc->bios = conf->bios;
 	pc->vga_bios = conf->vga_bios;
 	pc->linuxstart = conf->linuxstart;
@@ -814,7 +827,7 @@ PC *pc_new(SimpleFBDrawFunc *redraw, void (*poll)(void *), void *redraw_data,
 			       1, 12, pc->pic, set_irq,
 			       pc, pc_reset_request);
 	pc->adlib = adlib_new();
-	pc->ne2000 = isa_ne2000_init(0x300, 9, pc->pic, set_irq);
+	pc->ne2000 = isa_ne2000_init(0x300, 3, pc->pic, set_irq);
 	pc->isa_dma = i8257_new(pc->phys_mem, pc->phys_mem_size,
 				0x00, 0x80, 0x480, 0);
 	pc->isa_hdma = i8257_new(pc->phys_mem, pc->phys_mem_size,
@@ -879,13 +892,25 @@ void load_bios_and_reset(PC *pc)
 			strcpy(pc->phys_mem + cmdline_addr, "");
 
 		load_rom(pc->phys_mem, pc->linuxstart, start_addr, 0);
+		#ifdef STATIC_ALLOC
+		cpu_reset_pm(0x10000);
+		cpu_set_gpr(0, pc->phys_mem_size);
+		cpu_set_gpr(3, initrd_size);
+		cpu_set_gpr(1, cmdline_addr);
+		cpu_set_gpr(2, kernel_size);
+		#else
 		cpu_reset_pm(pc->cpu, 0x10000);
 		cpu_set_gpr(pc->cpu, 0, pc->phys_mem_size);
 		cpu_set_gpr(pc->cpu, 3, initrd_size);
 		cpu_set_gpr(pc->cpu, 1, cmdline_addr);
 		cpu_set_gpr(pc->cpu, 2, kernel_size);
+		#endif
 	} else {
+		#ifdef STATIC_ALLOC
+		cpu_reset();
+		#else
 		cpu_reset(pc->cpu);
+		#endif
 	}
 }
 

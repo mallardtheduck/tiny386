@@ -441,6 +441,7 @@ EMULINK *emulink_init()
 
 int emulink_attach_floppy(EMULINK *e, int i, const char *filename)
 {
+    printf("Attach floppy (%d): %s\n", i, filename);
 	if (i >= 0 && i < 2) {
 		if (e->fdd[i]) {
 			fclose(e->fdd[i]);
@@ -448,13 +449,17 @@ int emulink_attach_floppy(EMULINK *e, int i, const char *filename)
 		}
 		if (filename)
 			e->fdd[i] = fopen(filename, "r+b");
-		if (!e->fdd[i])
+		if (!e->fdd[i]){
+            printf("Could not open file: '%s''\n", filename);
 			return -1;
+        }
 		fseek(e->fdd[i], 0, SEEK_END);
 		int size = ftell(e->fdd[i]);
+		fseek(e->fdd[i], 0, SEEK_SET);
 		for (int j = 0; fmt[j].sectors; j++) {
-			if (size ==
-			    fmt[j].sectors * fmt[j].tracks * fmt[j].heads * 512) {
+            int expectedSize = fmt[j].sectors * fmt[j].tracks * fmt[j].heads * 512;
+            printf("Checking for format %d (%d =?= %d)\n", j, size, expectedSize);
+			if (size == expectedSize) {
 				e->fdfmti[i] = j;
 				return 0;
 			}

@@ -76,14 +76,14 @@ build_tiny386() {
 patch_idf() {
     PDIR="$PWD"
     cd "$IDF_PATH" &&
-    patch -p1 < "$PDIR/esp/esp-idf.patch" &&
+    patch -p1 --verbose < "$PDIR/esp/esp-idf.patch" &&
     cd "$PDIR"
 }
 
 patch_idf_60() {
     PDIR="$PWD"
     cd "$IDF_PATH" &&
-    patch -p1 < "$PDIR/esp/esp-idf-6.0.patch" &&
+    patch -p1 --verbose < "$PDIR/esp/esp-idf-6.0.patch" &&
     cd "$PDIR"
 }
 

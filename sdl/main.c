@@ -95,41 +95,160 @@ static void redraw(void *opaque,
 	SDL_PumpEvents();
 }
 
-/* we assume Xorg is used with a PC keyboard. Return 0 if no keycode found. */
+// /* we assume Xorg is used with a PC keyboard. Return 0 if no keycode found. */
+// static int sdl_get_keycode(const SDL_KeyboardEvent *ev)
+// {
+// 	int keycode = ev->keysym.scancode;
+// 	int sym = ev->keysym.sym;
+// 	switch (sym) {
+// 	case SDLK_UP: return 0x67;
+// 	case SDLK_DOWN: return 0x6c;
+// 	case SDLK_LEFT: return 0x69;
+// 	case SDLK_RIGHT: return 0x6a;
+// 	case SDLK_HOME: return 0x66;
+// 	case SDLK_END: return 0x6b;
+// 	case SDLK_PAGEUP: return 0x68;
+// 	case SDLK_PAGEDOWN: return 0x6d;
+// 	case SDLK_INSERT: return 0x6e;
+// 	case SDLK_DELETE: return 0x6f;
+// 	case SDLK_KP_DIVIDE: return 0x62;
+// 	case SDLK_KP_ENTER: return 0x60;
+// 	case SDLK_RCTRL: return 0x61;
+// 	case SDLK_PAUSE: return 0x77;
+// 	case SDLK_PRINT: return 0x63;
+// 	case SDLK_RALT: return 0x64;
+// 	default: if (keycode == 0) return 0;
+// 	}
+// #ifndef _WIN32
+// 	if (keycode < 9) {
+// 		keycode = 0;
+// 	} else if (keycode < 127 + 9) {
+// 		keycode -= 8;
+// 	} else {
+// 		keycode = 0;
+// 	}
+// #endif
+// 	return keycode;
+// }
+
 static int sdl_get_keycode(const SDL_KeyboardEvent *ev)
 {
-	int keycode = ev->keysym.scancode;
-	int sym = ev->keysym.sym;
-	switch (sym) {
-	case SDLK_UP: return 0x67;
-	case SDLK_DOWN: return 0x6c;
-	case SDLK_LEFT: return 0x69;
-	case SDLK_RIGHT: return 0x6a;
-	case SDLK_HOME: return 0x66;
-	case SDLK_END: return 0x6b;
-	case SDLK_PAGEUP: return 0x68;
-	case SDLK_PAGEDOWN: return 0x6d;
-	case SDLK_INSERT: return 0x6e;
-	case SDLK_DELETE: return 0x6f;
-	case SDLK_KP_DIVIDE: return 0x62;
-	case SDLK_KP_ENTER: return 0x60;
-	case SDLK_RCTRL: return 0x61;
-	case SDLK_PAUSE: return 0x77;
-	case SDLK_PRINT: return 0x63;
-	case SDLK_RALT: return 0x64;
-	default: if (keycode == 0) return 0;
-	}
-#ifndef _WIN32
-	if (keycode < 9) {
-		keycode = 0;
-	} else if (keycode < 127 + 9) {
-		keycode -= 8;
-	} else {
-		keycode = 0;
-	}
-#endif
-	return keycode;
+    switch (ev->keysym.sym) {
+        case SDLK_ESCAPE: return 1;
+        case SDLK_1: return 2;
+        case SDLK_2: return 3;
+        case SDLK_3: return 4;
+        case SDLK_4: return 5;
+        case SDLK_5: return 6;
+        case SDLK_6: return 7;
+        case SDLK_7: return 8;
+        case SDLK_8: return 9;
+        case SDLK_9: return 10;
+        case SDLK_0: return 11;
+        case SDLK_MINUS: return 12;
+        case SDLK_EQUALS: return 13;
+        case SDLK_BACKSPACE: return 14;
+        case SDLK_TAB: return 15;
+        case SDLK_q: return 16;
+        case SDLK_w: return 17;
+        case SDLK_e: return 18;
+        case SDLK_r: return 19;
+        case SDLK_t: return 20;
+        case SDLK_y: return 21;
+        case SDLK_u: return 22;
+        case SDLK_i: return 23;
+        case SDLK_o: return 24;
+        case SDLK_p: return 25;
+        case SDLK_LEFTBRACKET: return 26;
+        case SDLK_RIGHTBRACKET: return 27;
+        case SDLK_RETURN: return 28;
+        case SDLK_LCTRL: return 29;
+        case SDLK_a: return 30;
+        case SDLK_s: return 31;
+        case SDLK_d: return 32;
+        case SDLK_f: return 33;
+        case SDLK_g: return 34;
+        case SDLK_h: return 35;
+        case SDLK_j: return 36;
+        case SDLK_k: return 37;
+        case SDLK_l: return 38;
+        case SDLK_SEMICOLON: return 39;
+        case SDLK_QUOTE: return 40;
+        case SDLK_BACKQUOTE: return 41;
+        case SDLK_LSHIFT: return 42;
+        case SDLK_BACKSLASH: return 43;
+        case SDLK_z: return 44;
+        case SDLK_x: return 45;
+        case SDLK_c: return 46;
+        case SDLK_v: return 47;
+        case SDLK_b: return 48;
+        case SDLK_n: return 49;
+        case SDLK_m: return 50;
+        case SDLK_COMMA: return 51;
+        case SDLK_PERIOD: return 52;
+        case SDLK_SLASH: return 53;
+        case SDLK_RSHIFT: return 54;
+        case SDLK_KP_MULTIPLY: return 55;
+        case SDLK_LALT: return 56;
+        case SDLK_SPACE: return 57;
+        case SDLK_CAPSLOCK: return 58;
+        case SDLK_F1: return 59;
+        case SDLK_F2: return 60;
+        case SDLK_F3: return 61;
+        case SDLK_F4: return 62;
+        case SDLK_F5: return 63;
+        case SDLK_F6: return 64;
+        case SDLK_F7: return 65;
+        case SDLK_F8: return 66;
+        case SDLK_F9: return 67;
+        case SDLK_F10: return 68;
+        case SDLK_NUMLOCK: return 69;
+        case SDLK_SCROLLOCK: return 70;
+        case SDLK_KP7: return 71;
+        case SDLK_KP8: return 72;
+        case SDLK_KP9: return 73;
+        case SDLK_KP_MINUS: return 74;
+        case SDLK_KP4: return 75;
+        case SDLK_KP5: return 76;
+        case SDLK_KP6: return 77;
+        case SDLK_KP_PLUS: return 78;
+        case SDLK_KP1: return 79;
+        case SDLK_KP2: return 80;
+        case SDLK_KP3: return 81;
+        case SDLK_KP0: return 82;
+        case SDLK_KP_PERIOD: return 83;
+        case SDLK_F11: return 87;
+        case SDLK_F12: return 88;
+        case SDLK_KP_ENTER: return 96;
+        case SDLK_RCTRL: return 97;
+        case SDLK_KP_DIVIDE: return 98;
+        case SDLK_SYSREQ: return 99;
+        case SDLK_RALT: return 100;
+        case SDLK_HOME: return 102;
+        case SDLK_UP: return 103;
+        case SDLK_PAGEUP: return 104;
+        case SDLK_LEFT: return 105;
+        case SDLK_RIGHT: return 106;
+        case SDLK_END: return 107;
+        case SDLK_DOWN: return 108;
+        case SDLK_PAGEDOWN: return 109;
+        case SDLK_INSERT: return 110;
+        case SDLK_DELETE: return 111;
+        case SDLK_KP_EQUALS: return 117;
+        //case SDLK_KP_PLUSMINUS: return 118;
+        case SDLK_PAUSE: return 119;
+        //case SDLK_KP_COMMA: return 121;
+        // case SDLK_LGUI: return 125;
+        // case SDLK_RGUI: return 126;
+        case SDLK_HELP: return 138;
+        case SDLK_MENU: return 139;
+        case SDLK_F13: return 183;
+        case SDLK_F14: return 184;
+        case SDLK_F15: return 185;
+        default: return 0;
+    }
 }
+
 
 /* release all pressed keys */
 #define KEYCODE_MAX 127

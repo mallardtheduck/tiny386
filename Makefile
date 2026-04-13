@@ -8,17 +8,17 @@ SDL_CONFIG = sdl-config
 SLIRP_INC =
 SLIRP_LIB = -lslirp
 
-CFLAGS = -I . -Wall -O3 -ffunction-sections -fdata-sections -g -Wl,--gc-sections
-CFLAGS += -DI386_ENABLE_FPU
+CFLAGS = -I . -Wall -O3 -ffunction-sections -fdata-sections -g -Wl,-dead_strip
+CFLAGS += -DI386_ENABLE_FPU -I/opt/local/include
 CFLAGS += -DI386_ENABLE_MMX -DI386_ENABLE_SSE -DI386_ENABLE_SSE2 -DI386_ENABLE_SSE3
-CFLAGS += -DI386_ENABLE_SSSE3
+CFLAGS += -DI386_ENABLE_SSSE3 -include config.h
 CFLAGS_SDL = ${CFLAGS} `${SDL_CONFIG} --cflags`
 
 LDFLAGS_ =
 LDFLAGS_win32 = -mconsole
 LDFLAGS = ${LDFLAGS_${PLAT}}
 
-LIBS = -lm
+LIBS = -lm -L/opt/local/lib
 
 SRCS =
 
@@ -80,7 +80,7 @@ SUFF_RAWDRAW_SDL_n =
 SUFF_SDL = ${SUFF_SDL_SDL_${USE_SDL}}
 SUFF_RAWDRAW = ${SUFF_RAWDRAW_SDL_${USE_SDL}}
 
-PROGS_ = tiny386 tiny386_headless wifikbd initnet
+PROGS_ = tiny386 tiny386_headless wifikbd #initnet
 PROGS_win32 = tiny386 tiny386_headless wifikbd
 PROGS = ${PROGS_${PLAT}}
 

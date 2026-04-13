@@ -4,6 +4,18 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef STATIC_ALLOC
+#define CPU_PARAM
+#define CPU_PARAMC
+#define CPU_PASS
+#define CPU_PASSC
+#else
+#define CPU_PARAM CPUI386 *cpu
+#define CPU_PARAMC CPU_PARAM,
+#define CPU_PASS cpu
+#define CPU_PASSC cpu,
+#endif
+
 typedef uint32_t u32;
 typedef uint16_t u16;
 typedef uint8_t u8;
@@ -42,26 +54,26 @@ typedef struct {
 } CPU_CB;
 
 CPUI386 *cpui386_new(int gen, char *phys_mem, long phys_mem_size, CPU_CB **cb);
-void cpui386_delete(CPUI386 *cpu);
-void cpui386_enable_fpu(CPUI386 *cpu);
-void cpui386_reset(CPUI386 *cpu);
-void cpui386_reset_pm(CPUI386 *cpu, uint32_t start_addr);
-void cpui386_step(CPUI386 *cpu, int stepcount);
-void cpui386_raise_irq(CPUI386 *cpu);
-void cpui386_set_gpr(CPUI386 *cpu, int i, u32 val);
-long cpui386_get_cycle(CPUI386 *cpu);
+void cpui386_delete(CPU_PARAM);
+void cpui386_enable_fpu(CPU_PARAM);
+void cpui386_reset(CPU_PARAM);
+void cpui386_reset_pm(CPU_PARAMC uint32_t start_addr);
+void cpui386_step(CPU_PARAMC int stepcount);
+void cpui386_raise_irq(CPU_PARAM);
+void cpui386_set_gpr(CPU_PARAMC int i, u32 val);
+long cpui386_get_cycle(CPU_PARAM);
 
-bool cpu_load8(CPUI386 *cpu, int seg, uword addr, u8 *res);
-bool cpu_store8(CPUI386 *cpu, int seg, uword addr, u8 val);
-bool cpu_load16(CPUI386 *cpu, int seg, uword addr, u16 *res);
-bool cpu_store16(CPUI386 *cpu, int seg, uword addr, u16 val);
-bool cpu_load32(CPUI386 *cpu, int seg, uword addr, u32 *res);
-bool cpu_store32(CPUI386 *cpu, int seg, uword addr, u32 val);
-void cpu_setax(CPUI386 *cpu, u16 ax);
-u16 cpu_getax(CPUI386 *cpu);
-void cpu_setexc(CPUI386 *cpu, int excno, uword excerr);
-void cpu_setflags(CPUI386 *cpu, uword set_mask, uword clear_mask);
-uword cpu_getflags(CPUI386 *cpu);
-void cpu_abort(CPUI386 *cpu, int code);
+bool cpu_load8(CPU_PARAMC int seg, uword addr, u8 *res);
+bool cpu_store8(CPU_PARAMC int seg, uword addr, u8 val);
+bool cpu_load16(CPU_PARAMC int seg, uword addr, u16 *res);
+bool cpu_store16(CPU_PARAMC int seg, uword addr, u16 val);
+bool cpu_load32(CPU_PARAMC int seg, uword addr, u32 *res);
+bool cpu_store32(CPU_PARAMC int seg, uword addr, u32 val);
+void cpu_setax(CPU_PARAMC u16 ax);
+u16 cpu_getax(CPU_PARAM);
+void cpu_setexc(CPU_PARAMC int excno, uword excerr);
+void cpu_setflags(CPU_PARAMC uword set_mask, uword clear_mask);
+uword cpu_getflags(CPU_PARAM);
+void cpu_abort(CPU_PARAMC int code);
 
 #endif /* I386_H */

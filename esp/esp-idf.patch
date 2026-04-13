@@ -26,10 +26,10 @@ index f6bdfae4fa..692a3dde92 100644
  #ifdef CONFIG_LWIP_L2_TO_L3_COPY
      p = pbuf_alloc(PBUF_RAW, len, PBUF_RAM);
      if (p == NULL) {
-diff --git a/components/esp_psram/esp_psram.c b/components/esp_psram/esp_psram.c
+diff --git a/components/esp_psram/system_layer/esp_psram.c b/components/esp_psram/system_layer/esp_psram.c
 index daaa2d55e0..3e980e7278 100644
---- a/components/esp_psram/esp_psram.c
-+++ b/components/esp_psram/esp_psram.c
+--- a/components/esp_psram/system_layer/esp_psram.c
++++ b/components/esp_psram/system_layer/esp_psram.c
 @@ -299,6 +299,12 @@ esp_err_t esp_psram_init(void)
      return ESP_OK;
  }

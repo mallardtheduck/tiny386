@@ -20,13 +20,14 @@ idf_component_register(SRCS "esp_main.c"
 "lcd_axs15231b.c"
 "lcd_st7701.c"
 "lcd_elecrow7s3.c"
+"lcd_lcd43.c"
 "sdmmc_crc_wrap.c"
 "i2s.c"
 "storage.c"
 INCLUDE_DIRS "")
 
 if(NOT DEFINED BOARD)
-    set(BOARD "jc3248w535")
+    set(BOARD "lcd43")
 endif()
 
 message(STATUS "Building for BOARD=${BOARD}")
@@ -46,7 +47,7 @@ add_definitions(-DUSE_FMOPL)
 set_source_files_properties("../../adlib.c" PROPERTIES COMPILE_FLAGS "-Wno-all")
 set_source_files_properties("../../fmopl.c" PROPERTIES COMPILE_FLAGS "-Wno-all -fsingle-precision-constant")
 set_source_files_properties("../../fpu.c" PROPERTIES COMPILE_FLAGS "-Wno-all")
-set_source_files_properties("../../i386.c" PROPERTIES COMPILE_FLAGS "-Wno-all -O3")
+set_source_files_properties("../../i386.c" PROPERTIES COMPILE_FLAGS "-Wno-all -Ofast -fjump-tables -ftree-switch-conversion")
 set_source_files_properties("../../i8042.c" PROPERTIES COMPILE_FLAGS "-Wno-all")
 set_source_files_properties("../../vga.c" PROPERTIES COMPILE_FLAGS "-Wno-all -O3")
 set_source_files_properties("../../pc.c" PROPERTIES COMPILE_FLAGS "-Wno-all -O3")

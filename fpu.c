@@ -213,7 +213,7 @@ static void fppop(FPU *fpu)
 static bool fploadf32(void *cpu, int seg, uword addr, double *res)
 {
 	union union32 u;
-	if(!cpu_load32(cpu, seg, addr, &u.i))
+	if(!cpu_load32(CPU_PASSC seg, addr, &u.i))
 		return false;
 	*res = u.f;
 	return true;
@@ -222,9 +222,9 @@ static bool fploadf32(void *cpu, int seg, uword addr, double *res)
 static bool fploadf64(void *cpu, int seg, uword addr, double *res)
 {
 	u32 v1, v2;
-	if(!cpu_load32(cpu, seg, addr, &v1))
+	if(!cpu_load32(CPU_PASSC seg, addr, &v1))
 		return false;
-	if(!cpu_load32(cpu, seg, addr + 4, &v2))
+	if(!cpu_load32(CPU_PASSC seg, addr + 4, &v2))
 		return false;
 	uint64_t v = v2;
 	v = (v << 32) | v1;
@@ -236,11 +236,11 @@ static bool fploadf64(void *cpu, int seg, uword addr, double *res)
 static bool fploadf80(void *cpu, int seg, uword addr, double *res)
 {
 	F80 f80;
-	if(!cpu_load32(cpu, seg, addr, &f80.mant0))
+	if(!cpu_load32(CPU_PASSC seg, addr, &f80.mant0))
 		return false;
-	if(!cpu_load32(cpu, seg, addr + 4, &f80.mant1))
+	if(!cpu_load32(CPU_PASSC seg, addr + 4, &f80.mant1))
 		return false;
-	if(!cpu_load16(cpu, seg, addr + 8, &f80.high))
+	if(!cpu_load16(CPU_PASSC seg, addr + 8, &f80.high))
 		return false;
 	*res = fromf80(f80);
 	return true;
@@ -249,7 +249,7 @@ static bool fploadf80(void *cpu, int seg, uword addr, double *res)
 static bool fploadi16(void *cpu, int seg, uword addr, double *res)
 {
 	u16 v;
-	if(!cpu_load16(cpu, seg, addr, &v))
+	if(!cpu_load16(CPU_PASSC seg, addr, &v))
 		return false;
 	*res = (s16) v;
 	return true;
@@ -258,7 +258,7 @@ static bool fploadi16(void *cpu, int seg, uword addr, double *res)
 static bool fploadi32(void *cpu, int seg, uword addr, double *res)
 {
 	u32 v;
-	if(!cpu_load32(cpu, seg, addr, &v))
+	if(!cpu_load32(CPU_PASSC seg, addr, &v))
 		return false;
 	*res = (s32) v;
 	return true;
@@ -267,9 +267,9 @@ static bool fploadi32(void *cpu, int seg, uword addr, double *res)
 static bool fploadi64(void *cpu, int seg, uword addr, double *res)
 {
 	u32 v1, v2;
-	if(!cpu_load32(cpu, seg, addr, &v1))
+	if(!cpu_load32(CPU_PASSC seg, addr, &v1))
 		return false;
-	if(!cpu_load32(cpu, seg, addr + 4, &v2))
+	if(!cpu_load32(CPU_PASSC seg, addr + 4, &v2))
 		return false;
 	int64_t v = v2;
 	v = (v << 32) | v1;
@@ -286,11 +286,11 @@ static bool fploadbcd(void *cpu, int seg, uword addr, double *res)
 {
 	u32 lo, mi;
 	u16 hi;
-	if(!cpu_load32(cpu, seg, addr, &lo))
+	if(!cpu_load32(CPU_PASSC seg, addr, &lo))
 		return false;
-	if(!cpu_load32(cpu, seg, addr + 4, &mi))
+	if(!cpu_load32(CPU_PASSC seg, addr + 4, &mi))
 		return false;
-	if(!cpu_load16(cpu, seg, addr + 8, &hi))
+	if(!cpu_load16(CPU_PASSC seg, addr + 8, &hi))
 		return false;
 
 	uint64_t val = 0;
@@ -316,7 +316,7 @@ static bool fpstoref32(void *cpu, int seg, uword addr, double val)
 {
 	union union32 u = { .f = val };
 	u32 v = u.i;
-	if (!cpu_store32(cpu, seg, addr, v))
+	if (!cpu_store32(CPU_PASSC seg, addr, v))
 		return false;
 	return true;
 }
@@ -325,9 +325,9 @@ static bool fpstoref64(void *cpu, int seg, uword addr, double val)
 {
 	union union64 u = { .f = val };
 	uint64_t v = u.i;
-	if (!cpu_store32(cpu, seg, addr, v))
+	if (!cpu_store32(CPU_PASSC seg, addr, v))
 		return false;
-	if (!cpu_store32(cpu, seg, addr + 4, v >> 32))
+	if (!cpu_store32(CPU_PASSC seg, addr + 4, v >> 32))
 		return false;
 	return true;
 }
@@ -335,11 +335,11 @@ static bool fpstoref64(void *cpu, int seg, uword addr, double val)
 static bool fpstoref80(void *cpu, int seg, uword addr, double val)
 {
 	F80 f80 = tof80(val);
-	if (!cpu_store32(cpu, seg, addr, f80.mant0))
+	if (!cpu_store32(CPU_PASSC seg, addr, f80.mant0))
 		return false;
-	if (!cpu_store32(cpu, seg, addr + 4, f80.mant1))
+	if (!cpu_store32(CPU_PASSC seg, addr + 4, f80.mant1))
 		return false;
-	if (!cpu_store16(cpu, seg, addr + 8, f80.high))
+	if (!cpu_store16(CPU_PASSC seg, addr + 8, f80.high))
 		return false;
 	return true;
 }
@@ -364,7 +364,7 @@ static double fpround(double x, int rc)
 static bool fpstorei16(void *cpu, int seg, uword addr, double val)
 {
 	s16 v = val < 32768.0 && val >= -32768.0 ? (s16) val : 0x8000;
-	if (!cpu_store16(cpu, seg, addr, v))
+	if (!cpu_store16(CPU_PASSC seg, addr, v))
 		return false;
 	return true;
 }
@@ -372,7 +372,7 @@ static bool fpstorei16(void *cpu, int seg, uword addr, double val)
 static bool fpstorei32(void *cpu, int seg, uword addr, double val)
 {
 	s32 v = val < 2147483648.0 && val >= -2147483648.0 ? (s32) val : 0x80000000;
-	if (!cpu_store32(cpu, seg, addr, v))
+	if (!cpu_store32(CPU_PASSC seg, addr, v))
 		return false;
 	return true;
 }
@@ -381,9 +381,9 @@ static bool fpstorei64(void *cpu, int seg, uword addr, double val)
 {
 	int64_t v = val < 9223372036854775808.0 && val >= -9223372036854775808.0 ?
 		(int64_t) val : 0x8000000000000000ll;
-	if (!cpu_store32(cpu, seg, addr, v))
+	if (!cpu_store32(CPU_PASSC seg, addr, v))
 		return false;
-	if (!cpu_store32(cpu, seg, addr + 4, v >> 32))
+	if (!cpu_store32(CPU_PASSC seg, addr + 4, v >> 32))
 		return false;
 	return true;
 }
@@ -401,14 +401,14 @@ static bool fpstorebcd(void *cpu, int seg, uword addr, double val)
 	for (int i = 0; i < 9; i++) {
 		int res = (v % 10) | ((v / 10) % 10) << 4;
 		v /= 100;
-		if (!cpu_store8(cpu, seg, addr + i, res))
+		if (!cpu_store8(CPU_PASSC seg, addr + i, res))
 			return false;
 	}
 
 	int res = (v % 10) | ((v / 10) % 10) << 4;
 	if (sign)
 		res |= 0x80;
-	if (!cpu_store8(cpu, seg, addr + 9, res))
+	if (!cpu_store8(CPU_PASSC seg, addr + 9, res))
 		return false;
 	return true;
 }
@@ -489,7 +489,7 @@ bool fpu_exec2(FPU *fpu, void *cpu, bool opsz16, int op, int group, int seg, uin
 			break;
 		}
 		case 1:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		case 2: { // FST float32
 			a = fpget(fpu, 0);
@@ -508,46 +508,46 @@ bool fpu_exec2(FPU *fpu, void *cpu, bool opsz16, int op, int group, int seg, uin
 		}
 		case 4: // FLDENV
 			if (opsz16) {
-				if(!cpu_load16(cpu, seg, addr, &(fpu->cw)))
+				if(!cpu_load16(CPU_PASSC seg, addr, &(fpu->cw)))
 					return false;
 				u16 sw;
-				if(!cpu_load16(cpu, seg, addr + 2, &sw))
+				if(!cpu_load16(CPU_PASSC seg, addr + 2, &sw))
 					return false;
 				setsw(fpu, sw);
 			} else {
-				if(!cpu_load16(cpu, seg, addr, &(fpu->cw)))
+				if(!cpu_load16(CPU_PASSC seg, addr, &(fpu->cw)))
 					return false;
 				u16 sw;
-				if(!cpu_load16(cpu, seg, addr + 4, &sw))
+				if(!cpu_load16(CPU_PASSC seg, addr + 4, &sw))
 					return false;
 				setsw(fpu, sw);
 			}
 			break;
 		case 5: // FLDCW
-			if(!cpu_load16(cpu, seg, addr, &(fpu->cw)))
+			if(!cpu_load16(CPU_PASSC seg, addr, &(fpu->cw)))
 				return false;
 			break;
 		case 6: // FNSTENV
 			if (opsz16) {
-				if(!cpu_store16(cpu, seg, addr, fpu->cw))
+				if(!cpu_store16(CPU_PASSC seg, addr, fpu->cw))
 					return false;
 				u16 sw = getsw(fpu);
-				if(!cpu_store16(cpu, seg, addr + 2, sw))
+				if(!cpu_store16(CPU_PASSC seg, addr + 2, sw))
 					return false;
-				if(!cpu_store16(cpu, seg, addr + 4, 0 /* tw */))
+				if(!cpu_store16(CPU_PASSC seg, addr + 4, 0 /* tw */))
 					return false;
 			} else {
-				if(!cpu_store32(cpu, seg, addr, fpu->cw))
+				if(!cpu_store32(CPU_PASSC seg, addr, fpu->cw))
 					return false;
 				u16 sw = getsw(fpu);
-				if(!cpu_store32(cpu, seg, addr + 4, sw))
+				if(!cpu_store32(CPU_PASSC seg, addr + 4, sw))
 					return false;
-				if(!cpu_store32(cpu, seg, addr + 8, 0 /* tw */))
+				if(!cpu_store32(CPU_PASSC seg, addr + 8, 0 /* tw */))
 					return false;
 			}
 			break;
 		case 7: // FNSTCW
-			if(!cpu_store16(cpu, seg, addr, fpu->cw))
+			if(!cpu_store16(CPU_PASSC seg, addr, fpu->cw))
 				return false;
 			break;
 		}
@@ -588,7 +588,7 @@ bool fpu_exec2(FPU *fpu, void *cpu, bool opsz16, int op, int group, int seg, uin
 			break;
 		}
 		case 4:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		case 5: { // FLD float80
 			if (!fploadf80(cpu, seg, addr, &a)) {
@@ -598,7 +598,7 @@ bool fpu_exec2(FPU *fpu, void *cpu, bool opsz16, int op, int group, int seg, uin
 			break;
 		}
 		case 6:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		case 7: { // FSTP float80
 			a = fpget(fpu, 0);
@@ -654,30 +654,30 @@ bool fpu_exec2(FPU *fpu, void *cpu, bool opsz16, int op, int group, int seg, uin
 		case 4: { // FRSTOR
 			uword start = addr;
 			if (opsz16) {
-				if (!cpu_load16(cpu, seg, addr, &(fpu->cw)))
+				if (!cpu_load16(CPU_PASSC seg, addr, &(fpu->cw)))
 					return false;
 				u16 sw;
-				if (!cpu_load16(cpu, seg, addr + 2, &sw))
+				if (!cpu_load16(CPU_PASSC seg, addr + 2, &sw))
 					return false;
 				setsw(fpu, sw);
 				start += 14;
 			} else {
-				if (!cpu_load16(cpu, seg, addr, &(fpu->cw)))
+				if (!cpu_load16(CPU_PASSC seg, addr, &(fpu->cw)))
 					return false;
 				u16 sw;
-				if (!cpu_load16(cpu, seg, addr + 4, &sw))
+				if (!cpu_load16(CPU_PASSC seg, addr + 4, &sw))
 					return false;
 				setsw(fpu, sw);
 				start += 28;
 			}
 			for (int j = 0; j < 8; j++) {
-				if (!cpu_load32(cpu, seg, start,
+				if (!cpu_load32(CPU_PASSC seg, start,
 						&fpu->rawst[j].mant0))
 					return false;
-				if (!cpu_load32(cpu, seg, start + 4,
+				if (!cpu_load32(CPU_PASSC seg, start + 4,
 						&fpu->rawst[j].mant1))
 					return false;
-				if (!cpu_load16(cpu, seg, start + 8,
+				if (!cpu_load16(CPU_PASSC seg, start + 8,
 						&fpu->rawst[j].high))
 					return false;
 				fpu->rawtagr &= ~(1 << j);
@@ -687,26 +687,26 @@ bool fpu_exec2(FPU *fpu, void *cpu, bool opsz16, int op, int group, int seg, uin
 			break;
 		}
 		case 5:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		case 6: { // FNSAVE
 			uword start = addr;
 			if (opsz16) {
-				if(!cpu_store16(cpu, seg, addr, fpu->cw))
+				if(!cpu_store16(CPU_PASSC seg, addr, fpu->cw))
 					return false;
 				u16 sw = getsw(fpu);
-				if(!cpu_store16(cpu, seg, addr + 2, sw))
+				if(!cpu_store16(CPU_PASSC seg, addr + 2, sw))
 					return false;
-				if(!cpu_store16(cpu, seg, addr + 4, 0 /* tw */))
+				if(!cpu_store16(CPU_PASSC seg, addr + 4, 0 /* tw */))
 					return false;
 				start += 14;
 			} else {
-				if(!cpu_store32(cpu, seg, addr, fpu->cw))
+				if(!cpu_store32(CPU_PASSC seg, addr, fpu->cw))
 					return false;
 				u16 sw = getsw(fpu);
-				if(!cpu_store32(cpu, seg, addr + 4, sw))
+				if(!cpu_store32(CPU_PASSC seg, addr + 4, sw))
 					return false;
-				if(!cpu_store32(cpu, seg, addr + 8, 0 /* tw */))
+				if(!cpu_store32(CPU_PASSC seg, addr + 8, 0 /* tw */))
 					return false;
 				start += 28;
 			}
@@ -715,13 +715,13 @@ bool fpu_exec2(FPU *fpu, void *cpu, bool opsz16, int op, int group, int seg, uin
 					fpu->rawst[j] = tof80(fpu->st[j]);
 					fpu->rawtagw &= ~(1 << j);
 				}
-				if (!cpu_store32(cpu, seg, start,
+				if (!cpu_store32(CPU_PASSC seg, start,
 						 fpu->rawst[j].mant0))
 					return false;
-				if (!cpu_store32(cpu, seg, start + 4,
+				if (!cpu_store32(CPU_PASSC seg, start + 4,
 						 fpu->rawst[j].mant1))
 					return false;
-				if (!cpu_store16(cpu, seg, start + 8,
+				if (!cpu_store16(CPU_PASSC seg, start + 8,
 						 fpu->rawst[j].high))
 					return false;
 				start += 10;
@@ -732,7 +732,7 @@ bool fpu_exec2(FPU *fpu, void *cpu, bool opsz16, int op, int group, int seg, uin
 			break;
 		}
 		case 7: // FNSTSW
-			if (!cpu_store16(cpu, seg, addr, getsw(fpu)))
+			if (!cpu_store16(CPU_PASSC seg, addr, getsw(fpu)))
 				return false;
 			break;
 		}
@@ -828,7 +828,7 @@ enum {
 
 static bool cmov_cond(FPU *fpu, void *cpu, int i)
 {
-	uword flags = cpu_getflags(cpu);
+	uword flags = cpu_getflags(CPU_PASS);
 	switch(i) {
 	case 0x0: return flags & CF;
 	case 0x1: return flags & ZF;
@@ -843,13 +843,13 @@ static void ucomi(FPU *fpu, void *cpu, int i)
 	double a = fpget(fpu, 0);
 	double b = fpget(fpu, i);
 	if (isunordered(a, b)) {
-		cpu_setflags(cpu, ZF | PF | CF, 0);
+		cpu_setflags(CPU_PASSC ZF | PF | CF, 0);
 	} else if (a == b) {
-		cpu_setflags(cpu, ZF, PF | CF);
+		cpu_setflags(CPU_PASSC ZF, PF | CF);
 	} else if (a < b) {
-		cpu_setflags(cpu, CF, ZF | PF);
+		cpu_setflags(CPU_PASSC CF, ZF | PF);
 	} else {
-		cpu_setflags(cpu, 0, ZF | PF | CF);
+		cpu_setflags(CPU_PASSC 0, ZF | PF | CF);
 	}
 }
 
@@ -896,7 +896,7 @@ bool fpu_exec1(FPU *fpu, void *cpu, int op, int group, unsigned int i)
 			case 3:
 			case 6:
 			case 7:
-				cpu_setexc(cpu, 6, 0);
+				cpu_setexc(CPU_PASSC 6, 0);
 				return false;
 			case 4: // FTST
 				fparith(fpu, 2, 0, temp, 0.0);
@@ -947,7 +947,7 @@ bool fpu_exec1(FPU *fpu, void *cpu, int op, int group, unsigned int i)
 				fppush(fpu, 0.0);
 				break;
 			case 7:
-				cpu_setexc(cpu, 6, 0);
+				cpu_setexc(CPU_PASSC 6, 0);
 				return false;
 			}
 			break;
@@ -1076,14 +1076,14 @@ bool fpu_exec1(FPU *fpu, void *cpu, int op, int group, unsigned int i)
 				fppop(fpu);
 				break;
 			}
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		case 0: case 1: case 2: case 3: // FCMOV
 			if (cmov_cond(fpu, cpu, group))
 				fpset(fpu, 0, fpget(fpu, i));
 			break;
 		default:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
@@ -1107,7 +1107,7 @@ bool fpu_exec1(FPU *fpu, void *cpu, int op, int group, unsigned int i)
 				break;
 			case 6:
 			case 7:
-				cpu_setexc(cpu, 6, 0);
+				cpu_setexc(CPU_PASSC 6, 0);
 				return false;
 			}
 			break;
@@ -1120,7 +1120,7 @@ bool fpu_exec1(FPU *fpu, void *cpu, int op, int group, unsigned int i)
 			ucomi(fpu, cpu, i);
 			break;
 		default:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
@@ -1173,7 +1173,7 @@ bool fpu_exec1(FPU *fpu, void *cpu, int op, int group, unsigned int i)
 		}
 		case 6:
 		case 7:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;
@@ -1209,9 +1209,9 @@ bool fpu_exec1(FPU *fpu, void *cpu, int op, int group, unsigned int i)
 		case 4:
 			if (i == 0) { // FNSTSW
 				u16 sw = getsw(fpu);
-				cpu_setax(cpu, sw);
+				cpu_setax(CPU_PASSC sw);
 			} else {
-				cpu_setexc(cpu, 6, 0);
+				cpu_setexc(CPU_PASSC 6, 0);
 				return false;
 			}
 			break;
@@ -1221,7 +1221,7 @@ bool fpu_exec1(FPU *fpu, void *cpu, int op, int group, unsigned int i)
 			fppop(fpu);
 			break;
 		case 7:
-			cpu_setexc(cpu, 6, 0);
+			cpu_setexc(CPU_PASSC 6, 0);
 			return false;
 		}
 		break;

@@ -119,11 +119,12 @@ static void redraw(void *opaque,
 		uint16_t *src = (uint16_t *) s->fb;
 		src += LCD_WIDTH * LCD_HEIGHT / NN * i;
 		memcpy(s->fb1, src, LCD_WIDTH * LCD_HEIGHT / NN * 2);
-		lcd_draw(0, LCD_WIDTH / NN * i,
-			 LCD_HEIGHT, LCD_WIDTH / NN * (i + 1),
+		lcd_draw(0, LCD_HEIGHT / NN * i,
+			 LCD_WIDTH, LCD_HEIGHT / NN * (i + 1),
 			 s->fb1);
-		vga_step(s->pc->vga);
-		usleep(900);
+		//vga_step(s->pc->vga);
+		//usleep(900);
+		taskYIELD();
 	}
 }
 
@@ -135,8 +136,8 @@ static int pc_main(const char *file)
 {
 	PCConfig conf;
 	memset(&conf, 0, sizeof(conf));
-	conf.mem_size = 8 * 1024 * 1024;
-	conf.vga_mem_size = 256 * 1024;
+	conf.mem_size = 4 * 1024 * 1024;
+	conf.vga_mem_size = 512 * 1024;
 	conf.cpu_gen = 4;
 	conf.fpu = 0;
 
@@ -248,6 +249,7 @@ static int parse_ini(void* user, const char* section,
 
 void app_main(void)
 {
+	printf("ESP HELLO\n");
 	global_event_group = xEventGroupCreate();
 
 #ifdef ESPDEBUG
@@ -269,16 +271,20 @@ void app_main(void)
 	i2s_main();
 	storage_init();
 
-	esp_psram_init();
+	size_t psi_len = 42;// esp_psram_init();
 #ifndef PSRAM_ALLOC_LEN
 	// use the whole psram
 	size_t len;
 	psram = esp_psram_get(&len);
 	psram_len = len;
 #else
+	heap_caps_dump(MALLOC_CAP_SPIRAM);
+	printf("Free: %ld\n", esp_get_free_heap_size());
 	psram_len = PSRAM_ALLOC_LEN;
 	psram = heap_caps_calloc(1, psram_len, MALLOC_CAP_SPIRAM);
 #endif
+
+	printf("ESP pre-init done %p (%ld - %u).\n", psram, psram_len, psi_len);
 
 	const static char *files[] = {
 		"/sdcard/tiny386.ini",
@@ -288,16 +294,24 @@ void app_main(void)
 	static struct esp_ini_config config;
 	for (int i = 0; files[i]; i++) {
 		if (ini_parse(files[i], parse_ini, &config) == 0) {
+			printf("ESP using config: %s\n", files[i]);
 			config.filename = files[i];
 			break;
 		}
 	}
 	if (config.ssid[0]) {
+		printf("ESP Wifi init: %s\n", config.ssid);
 		wifi_main(config.ssid, config.pass);
 	}
 
+	printf("ESP Go for launch!\n");
+
 	if (psram) {
-		xTaskCreatePinnedToCore(i386_task, "i386_main", 4096, &config, 3, NULL, 1);
-		xTaskCreatePinnedToCore(vga_task, "vga_task", 4096, NULL, 0, NULL, 0);
+		xTaskCreatePinnedToCore(i386_task, "i386_main", 4096, &config, 5, NULL, 1);
+		xTaskCreatePinnedToCore(vga_task, "vga_task", 4096, NULL, 2, NULL, 0);
 	}
+}
+
+void task_yield(){
+	taskYIELD();
 }
