@@ -44,13 +44,16 @@ endif()
 add_definitions(-DI386_ENABLE_FPU)
 add_definitions(-DUSE_FMOPL)
 
+add_compile_options("-flto=full -O2")
+add_link_options("-flto=full")
+
 set_source_files_properties("../../adlib.c" PROPERTIES COMPILE_FLAGS "-Wno-all")
 set_source_files_properties("../../fmopl.c" PROPERTIES COMPILE_FLAGS "-Wno-all -fsingle-precision-constant")
 set_source_files_properties("../../fpu.c" PROPERTIES COMPILE_FLAGS "-Wno-all")
-set_source_files_properties("../../i386.c" PROPERTIES COMPILE_FLAGS "-Wno-all -Ofast -fjump-tables -ftree-switch-conversion")
+set_source_files_properties("../../i386.c" PROPERTIES COMPILE_FLAGS "-Wno-all -O3 -fjump-tables -ftree-switch-conversion -fomit-frame-pointer") #-O3 
 set_source_files_properties("../../i8042.c" PROPERTIES COMPILE_FLAGS "-Wno-all")
-set_source_files_properties("../../vga.c" PROPERTIES COMPILE_FLAGS "-Wno-all -O3")
-set_source_files_properties("../../pc.c" PROPERTIES COMPILE_FLAGS "-Wno-all -O3")
+set_source_files_properties("../../vga.c" PROPERTIES COMPILE_FLAGS "-Wno-all -O3") #-O3
+set_source_files_properties("../../pc.c" PROPERTIES COMPILE_FLAGS "-Wno-all -O3") #-O3
 set_source_files_properties("../../ne2000.c" PROPERTIES COMPILE_FLAGS "-Wno-all")
 set_source_files_properties("../../sb16.c" PROPERTIES COMPILE_FLAGS "-Wno-all")
 set_source_files_properties("../../i8257.c" PROPERTIES COMPILE_FLAGS "-Wno-all")

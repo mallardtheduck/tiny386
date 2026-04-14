@@ -96,7 +96,7 @@ typedef struct {
 	u8 *fb;
 } Console;
 
-#define NN 32
+#define NN 8
 Console *console_init(int width, int height)
 {
 	Console *c = malloc(sizeof(Console));
@@ -114,6 +114,7 @@ void lcd_draw(int x_start, int y_start, int x_end, int y_end, void *src);
 static void redraw(void *opaque,
 		   int x, int y, int w, int h)
 {
+	//printf("Redraw: %d %d %d %d\n", x, y, w, h);
 	Console *s = opaque;
 	for (int i = 0; i < NN; i++) {
 		uint16_t *src = (uint16_t *) s->fb;
@@ -126,6 +127,7 @@ static void redraw(void *opaque,
 		//usleep(900);
 		taskYIELD();
 	}
+	vTaskDelay(20 / portTICK_PERIOD_MS);
 }
 
 static void stub(void *opaque)
@@ -219,7 +221,7 @@ void *psmalloc(long size)
 
 void *fbmalloc(long size)
 {
-	void *fb = (uint8_t *) heap_caps_calloc(1, size, MALLOC_CAP_DMA);
+	void *fb = (uint8_t *) heap_caps_calloc(1, size, MALLOC_CAP_DEFAULT);
 	if (!fb) {
 		fprintf(stderr, "fbmalloc error %ld\n", size);
 		abort();

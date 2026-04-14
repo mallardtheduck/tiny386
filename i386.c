@@ -88,10 +88,10 @@ struct CPUI386 {
 			uword xaddr;
 			int (*pte_lookup)[2];
 			u8 *ppte;
-		} *tab;
+		} *tab __attribute__((aligned));
 	} tlb;
 
-	u8 *phys_mem;
+	u8 * restrict phys_mem;
 	long phys_mem_size;
 
 	long cycle;
@@ -109,8 +109,8 @@ struct CPUI386 {
 };
 
 #ifdef STATIC_ALLOC
-CPUI386 theCPU;
-#define CPU_VAR [[maybe_unused]] CPUI386 *cpu=&theCPU
+static CPUI386 theCPU;
+#define CPU_VAR [[maybe_unused]] CPUI386 * const cpu = &theCPU
 #else
 #define CPU_VAR
 #endif
@@ -541,10 +541,12 @@ static inline int get_IOPL(CPU_PARAM)
 #define CR0_PG (1<<31)
 #define CR0_WP (0x10000)
 #ifdef BUILD_ESP32
-#define tlb_size 512 //256
+#define TLB_SIZE 256
 #else
-#define tlb_size 512
+#define TLB_SIZE 512
 #endif
+#define TLB_MASK (TLB_SIZE - 1)
+
 typedef struct {
 	enum {
 		ADDR_OK1,
@@ -557,7 +559,7 @@ typedef struct {
 static void tlb_clear(CPU_PARAM)
 {
 	CPU_VAR;
-	for (int i = 0; i < tlb_size; i++) {
+	for (int i = 0; i < TLB_SIZE; i++) {
 		cpu->tlb.tab[i].lpgno = -1;
 	}
 	cpu->ifetch.laddr = -1;
@@ -608,30 +610,29 @@ static bool IRAM_ATTR tlb_refill(CPU_PARAMC struct tlb_entry *ent, uword lpgno)
 	return true;
 }
 
+__attribute__((cold)) static bool handle_page_fault(CPU_PARAMC int rwm, uword laddr, int cpl, int cerr){
+	CPU_VAR;
+	cpu->cr2 = laddr;
+	cpu->excno = EX_PF;
+	cpu->excerr = cerr;
+	if (rwm & 2)
+		cpu->excerr |= 2;
+	if (cpl)
+		cpu->excerr |= 4;
+	return false;
+}
+
 static bool IRAM_ATTR translate_lpgno(CPU_PARAMC int rwm, uword lpgno, uword laddr, int cpl, uword *paddr)
 {
 	CPU_VAR;
-	struct tlb_entry *ent = &(cpu->tlb.tab[lpgno % tlb_size]);
+	struct tlb_entry *ent = &(cpu->tlb.tab[lpgno & TLB_MASK]);
 	if (ent->lpgno != lpgno) {
-		if (!tlb_refill(CPU_PASSC ent, lpgno)) {
-			cpu->cr2 = laddr;
-			cpu->excno = EX_PF;
-			cpu->excerr = 0;
-			if (rwm & 2)
-				cpu->excerr |= 2;
-			if (cpl)
-				cpu->excerr |= 4;
-			return false;
+		if (unlikely(!tlb_refill(CPU_PASSC ent, lpgno))) {
+			return handle_page_fault(CPU_PASSC rwm, laddr, cpl, 0);
 		}
 	}
 	if (ent->pte_lookup[cpl > 0][rwm > 1]) {
-		cpu->cr2 = laddr;
-		cpu->excno = EX_PF;
-		cpu->excerr = 1;
-		if (rwm & 2)
-			cpu->excerr |= 2;
-		if (cpl)
-			cpu->excerr |= 4;
+		handle_page_fault(CPU_PASSC rwm, laddr, cpl, 1);
 		ent->lpgno = -1;
 		return false;
 	}
@@ -671,7 +672,7 @@ static bool IRAM_ATTR segcheck(CPU_PARAMC int rwm, int seg, uword addr, int size
 	CPU_VAR;
 	if (cpu->cr0 & 1) {
 		/* null selector check */
-		if (cpu->seg[seg].limit == 0 && (cpu->seg[seg].sel & ~0x3) == 0) {
+		if (unlikely(cpu->seg[seg].limit == 0 && (cpu->seg[seg].sel & ~0x3) == 0)) {
 //			dolog("segcheck: seg %d is null %x\n", seg, cpu->seg[seg].sel);
 			THROW(EX_GP, 0);
 		}
@@ -691,9 +692,11 @@ static bool IRAM_ATTR segcheck(CPU_PARAMC int rwm, int seg, uword addr, int size
 	return true;
 }
 
+
 static bool IRAM_ATTR translate(CPU_PARAMC OptAddr *res, int rwm, int seg, uword addr, int size, int cpl)
 {
 	CPU_VAR;
+    
 	assert(seg != -1);
 	uword laddr = cpu->seg[seg].base + addr;
 
@@ -712,23 +715,15 @@ static bool IRAM_ATTR translate8r(CPU_PARAMC OptAddr *res, int seg, uword addr)
 
 	if (cpu->cr0 & CR0_PG) {
 		uword lpgno = laddr >> 12;
-		struct tlb_entry *ent = &(cpu->tlb.tab[lpgno % tlb_size]);
+		struct tlb_entry *ent = &(cpu->tlb.tab[lpgno & TLB_MASK]);
 		if (ent->lpgno != lpgno) {
-			if (!tlb_refill(CPU_PASSC ent, lpgno)) {
-				cpu->cr2 = laddr;
-				cpu->excno = EX_PF;
-				cpu->excerr = 0;
-				if (cpu->cpl)
-					cpu->excerr |= 4;
+			if (unlikely(!tlb_refill(CPU_PASSC ent, lpgno))) {
+				handle_page_fault(CPU_PASSC 0, laddr, cpu->cpl, 0);
 				return false;
 			}
 		}
-		if (ent->pte_lookup[cpu->cpl > 0][0]) {
-			cpu->cr2 = laddr;
-			cpu->excno = EX_PF;
-			cpu->excerr = 1;
-			if (cpu->cpl)
-				cpu->excerr |= 4;
+		if (unlikely(ent->pte_lookup[cpu->cpl > 0][0])) {
+			handle_page_fault(CPU_PASSC 0, laddr, cpu->cpl, 1);
 			ent->lpgno = -1;
 			return false;
 		}
@@ -770,8 +765,9 @@ static u8 IRAM_ATTR load8(CPU_PARAMC OptAddr *res)
 {
 	CPU_VAR;
 	uword addr = res->addr1;
-	if (in_iomem(addr) && cpu->cb.iomem_read8)
+	if (unlikely(in_iomem(addr) && cpu->cb.iomem_read8)){
 		return cpu->cb.iomem_read8(cpu->cb.iomem, addr);
+	}
 	if (unlikely(addr >= cpu->phys_mem_size)) {
 		return 0;
 	}
@@ -904,18 +900,12 @@ LOADSTORE(8)
 LOADSTORE(16)
 LOADSTORE(32)
 
-static bool IRAM_ATTR peek8(CPU_PARAMC u8 *val)
-{
+static bool IRAM_ATTR peek8_translated(CPU_PARAMC u8 *val, uword laddr){
 	CPU_VAR;
-	uword laddr = cpu->seg[SEG_CS].base + cpu->next_ip;
-	if (likely((laddr ^ cpu->ifetch.laddr) < 4096)) {
-		*val = pload8(CPU_PASSC cpu->ifetch.xaddr ^ laddr);
-		return true;
-	}
 	OptAddr res;
 	TRY(translate8r(CPU_PASSC &res, SEG_CS, cpu->next_ip));
 	uword paddr = res.addr1;
-	if (in_iomem(paddr) && cpu->cb.iomem_read8) {
+	if (unlikely(in_iomem(paddr) && cpu->cb.iomem_read8)) {
 		*val = cpu->cb.iomem_read8(cpu->cb.iomem, paddr);
 		return true;
 	}
@@ -929,6 +919,18 @@ static bool IRAM_ATTR peek8(CPU_PARAMC u8 *val)
 		cpu->ifetch.xaddr = paddr ^ laddr;
 	}
 	return true;
+}
+
+static bool IRAM_ATTR peek8(CPU_PARAMC u8 *val)
+{
+	CPU_VAR;
+	uword laddr = cpu->seg[SEG_CS].base + cpu->next_ip;
+	if (likely((laddr ^ cpu->ifetch.laddr) < 4096)) {
+		*val = pload8(CPU_PASSC cpu->ifetch.xaddr ^ laddr);
+		return true;
+	}else{
+		return peek8_translated(CPU_PASSC val, laddr);
+	}
 }
 
 static bool IRAM_ATTR peek8a(CPU_PARAMC u8 *val)
@@ -1016,7 +1018,7 @@ static bool IRAM_ATTR fetch32(CPU_PARAMC u32 *val)
 }
 
 /* insts decode && execute */
-static inline bool modsib32(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
+static bool modsib32(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
 {
 	CPU_VAR;
 	if (rm == 4) {
@@ -1056,7 +1058,7 @@ static inline bool modsib32(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
 	return true;
 }
 
-static inline bool modsib16(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
+static bool modsib16(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
 {
 	CPU_VAR;
 	if (rm == 6 && mod == 0) {
@@ -1085,18 +1087,22 @@ static inline bool modsib16(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
 		}
 		*addr &= 0xffff;
 	}
+
+	static const int default_seg[8] = {
+		SEG_DS, SEG_DS, SEG_SS, SEG_SS,
+		SEG_DS, SEG_DS, SEG_DS, SEG_DS
+	};
+
 	if (*seg == -1) {
-		if (rm == 2 || rm == 3)
-			*seg = SEG_SS;
-		else if (mod != 0 && rm == 6)
+		if (mod != 0 && rm == 6)
 			*seg = SEG_SS;
 		else
-			*seg = SEG_DS;
+			*seg = default_seg[rm];
 	}
 	return true;
 }
 
-static bool IRAM_ATTR modsib(CPU_PARAMC int adsz16, int mod, int rm, uword *addr, int *seg)
+static inline bool IRAM_ATTR modsib(CPU_PARAMC int adsz16, int mod, int rm, uword *addr, int *seg)
 {
 	CPU_VAR;
 	if (adsz16) return modsib16(CPU_PASSC mod, rm, addr, seg);
@@ -1119,7 +1125,7 @@ static bool IRAM_ATTR_CPU_EXEC1 read_desc(CPU_PARAMC int sel, uword *w1, uword *
 		limit = cpu->gdt.limit;
 	}
 
-	if (off + 7 > limit) {
+	if (unlikely(off + 7 > limit)) {
 		dolog("read_desc: sel %04x base %x limit %x off %x\n", sel, base, limit, off);
 		THROW(EX_GP, sel & ~0x3);
 	}
@@ -1160,13 +1166,13 @@ static bool IRAM_ATTR_CPU_EXEC1 set_seg(CPU_PARAMC int seg, int sel)
 	if (sel & ~0x3) {
 		switch(seg) {
 		case SEG_DS: case SEG_ES: case SEG_FS: case SEG_GS:
-			if (!s) {
+			if (unlikely(!s)) {
 				// to avoid win95 BSOD...
 				THROW(EX_GP, sel & ~0x3);
 			}
 		}
 
-		if (!p) THROW((seg == SEG_SS ? EX_SS : EX_NP), sel & ~0x3);
+		if (unlikely(!p)) THROW((seg == SEG_SS ? EX_SS : EX_NP), sel & ~0x3);
 	}
 
 	cpu->seg[seg].sel = sel;
@@ -1187,7 +1193,7 @@ static bool IRAM_ATTR_CPU_EXEC1 set_seg(CPU_PARAMC int seg, int sel)
 	return true;
 }
 
-static inline void clear_segs(CPU_PARAM)
+static void clear_segs(CPU_PARAM)
 {
 	CPU_VAR;
 	int segs[] = { SEG_DS, SEG_ES, SEG_FS, SEG_GS };
@@ -1232,7 +1238,7 @@ static inline void clear_segs(CPU_PARAM)
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
-	if (PM && (!(cpu->cr0 & 1) || (cpu->flags & VM))) THROW0(EX_UD); \
+	if (unlikely(PM && (!(cpu->cr0 & 1) || (cpu->flags & VM)))) THROW0(EX_UD); \
 	if (mod == 3) { \
 		INST ## SUFFIX(rm, reg, lreg ## BIT, sreg ## BIT, lreg ## BIT, sreg ## BIT) \
 	} else { \
@@ -1378,7 +1384,7 @@ static inline void clear_segs(CPU_PARAM)
 	int reg = (modrm >> 3) & 7; \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
-	if (mod == 3) THROW0(EX_UD); \
+	if (unlikely(mod == 3)) THROW0(EX_UD); \
 	else { \
 		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		INST ## SUFFIX(reg, addr, lreg ## BIT, sreg ## BIT, limm, 0) \
@@ -1615,7 +1621,7 @@ static inline void clear_segs(CPU_PARAM)
 	TRY(fetch8(CPU_PASSC &modrm)); \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
-	if (mod == 3) THROW0(EX_UD); \
+	if (unlikely(mod == 3)) THROW0(EX_UD); \
 	else { \
 		u16 seg; \
 		u32 off; \
@@ -1639,7 +1645,7 @@ static inline void clear_segs(CPU_PARAM)
 	TRY(fetch8(CPU_PASSC &modrm)); \
 	int mod = modrm >> 6; \
 	int rm = modrm & 7; \
-	if (mod == 3) THROW0(EX_UD); \
+	if (unlikely(mod == 3)) THROW0(EX_UD); \
 	else { \
 		TRY(modsib(CPU_PASSC adsz16, mod, rm, &addr, &curr_seg)); \
 		INST(addr) \
@@ -2126,36 +2132,36 @@ noinline void IRAM_ATTR try_jcc8(CPU_PARAM)
 #define IDIVb(a, la, sa) \
 	sword src1 = sext16(lreg16(0)); \
 	sword src2 = sext8(la(a)); \
-	if (src2 == 0) THROW0(EX_DE); \
+	if (unlikely(src2 == 0)) THROW0(EX_DE); \
 	sword res = src1 / src2; \
-	if (res > 127 || res < -128) THROW0(EX_DE); \
+	if (unlikely(res > 127 || res < -128)) THROW0(EX_DE); \
 	sreg8(0, res); \
 	sreg8(4, src1 % src2);
 
 #define IDIVw(a, la, sa) \
 	sword src1 = sext32(lreg16(0) | (lreg16(2)<< 16)); \
 	sword src2 = sext16(la(a)); \
-	if (src2 == 0) THROW0(EX_DE); \
+	if (unlikely(src2 == 0)) THROW0(EX_DE); \
 	sword res = src1 / src2; \
-	if (res > 32767 || res < -32768) THROW0(EX_DE); \
+	if (unlikely(res > 32767 || res < -32768)) THROW0(EX_DE); \
 	sreg16(0, res); \
 	sreg16(2, src1 % src2);
 
 #define IDIVd(a, la, sa) \
 	int64_t src1 = (((uint64_t) lreg32(2)) << 32) | lreg32(0); \
 	int64_t src2 = (sword) (la(a));	\
-	if (src2 == 0) THROW0(EX_DE); \
+	if (unlikely(src2 == 0)) THROW0(EX_DE); \
 	int64_t res = src1 / src2; \
-	if (res > 2147483647 || res < -2147483648) THROW0(EX_DE); \
+	if (unlikely(res > 2147483647 || res < -2147483648)) THROW0(EX_DE); \
 	sreg32(0, res); \
 	sreg32(2, src1 % src2);
 
 #define DIVb(a, la, sa) \
 	uword src1 = lreg16(0); \
 	uword src2 = la(a); \
-	if (src2 == 0) THROW0(EX_DE); \
+	if (unlikely(src2 == 0)) THROW0(EX_DE); \
 	uword res = src1 / src2; \
-	if (res > 0xff) THROW0(EX_DE); \
+	if (unlikely(res > 0xff)) THROW0(EX_DE); \
 	/* bypass the Cyrix 5/2 test */ \
 	if (src1 == 0x5 && src2 == 0x2) { cpu->cc.mask &= ~ZF; cpu->flags |= ZF; } \
 	sreg8(0, res); \
@@ -2164,9 +2170,9 @@ noinline void IRAM_ATTR try_jcc8(CPU_PARAM)
 #define DIVw(a, la, sa) \
 	uword src1 = lreg16(0) | (lreg16(2)<< 16); \
 	uword src2 = la(a); \
-	if (src2 == 0) THROW0(EX_DE); \
+	if (unlikely(src2 == 0)) THROW0(EX_DE); \
 	uword res = src1 / src2; \
-	if (res > 0xffff) THROW0(EX_DE); \
+	if (unlikely(res > 0xffff)) THROW0(EX_DE); \
 	/* bypass the NexGen 0x5555/2 test */ \
 	if (src1 == 0x5555 && src2 == 0x2) { cpu->cc.mask &= ~ZF; cpu->flags &= ~ZF; } \
 	sreg16(0, res); \
@@ -2175,9 +2181,9 @@ noinline void IRAM_ATTR try_jcc8(CPU_PARAM)
 #define DIVd(a, la, sa) \
 	uint64_t src1 = (((uint64_t) lreg32(2)) << 32) | lreg32(0); \
 	uint64_t src2 = la(a); \
-	if (src2 == 0) THROW0(EX_DE); \
+	if (unlikely(src2 == 0)) THROW0(EX_DE); \
 	uint64_t res = src1 / src2; \
-	if (res > 0xffffffff) THROW0(EX_DE); \
+	if (unlikely(res > 0xffffffff)) THROW0(EX_DE); \
 	sreg32(0, res); \
 	sreg32(2, src1 % src2);
 
@@ -2244,7 +2250,7 @@ noinline void IRAM_ATTR try_jcc8(CPU_PARAM)
 #define MOVw(a, b, la, sa, lb, sb) sa(a, lb(b));
 #define MOVd(a, b, la, sa, lb, sb) sa(a, lb(b));
 #define MOVSeg(a, b, la, sa, lb, sb) \
-	if (a == SEG_CS) THROW0(EX_UD); \
+	if (unlikely(a == SEG_CS)) THROW0(EX_UD); \
 	if (a == SEG_SS) stepcount++; \
 	TRY(set_seg(CPU_PASSC a, lb(b)));
 #define MOVZXdb(a, b, la, sa, lb, sb) sa(a, lb(b));
@@ -2278,7 +2284,7 @@ noinline void IRAM_ATTR try_jcc8(CPU_PARAM)
 	}
 
 #define LEAd(a, b, la, sa, lb, sb) \
-	if (mod == 3) THROW0(EX_UD); \
+	if (unlikely(mod == 3)) THROW0(EX_UD); \
 	sa(a, lb(b));
 #define LEAw LEAd
 
@@ -2291,7 +2297,7 @@ noinline void IRAM_ATTR try_jcc8(CPU_PARAM)
 	else sreg32(2, sext32(-(sext32(lreg32(0)) >> 31)));
 
 #define MOVFC() \
-	if (cpu->cpl != 0) THROW(EX_GP, 0); \
+	if (unlikely(cpu->cpl != 0)) THROW(EX_GP, 0); \
 	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int rm = modrm & 7; \
@@ -2306,7 +2312,7 @@ noinline void IRAM_ATTR try_jcc8(CPU_PARAM)
 	} else THROW0(EX_UD);
 
 #define MOVTC() \
-	if (cpu->cpl != 0) THROW(EX_GP, 0); \
+	if (unlikely(cpu->cpl != 0)) THROW(EX_GP, 0); \
 	TRY(fetch8(CPU_PASSC &modrm)); \
 	int reg = (modrm >> 3) & 7; \
 	int rm = modrm & 7; \
@@ -2339,7 +2345,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 #define INT(i, li, _) \
 	/*dolog("int %02x %08x %04x:%08x\n", li(i), REGi[0], SEGi(SEG_CS), cpu->ip);*/ \
 	if ((cpu->flags & VM)) { \
-		if(get_IOPL(CPU_PASS) < 3) THROW(EX_GP, 0); \
+		if(unlikely(get_IOPL(CPU_PASS) < 3)) THROW(EX_GP, 0); \
 	} \
 	uword oldip = cpu->ip; \
 	cpu->ip = cpu->next_ip; \
@@ -2352,7 +2358,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 	if ((cpu->cr0 & 1) && (!(cpu->flags & VM) || get_IOPL(CPU_PASS) < 3)) { \
 		TRY(pmret(CPU_PASSC opsz16, 0, true)); \
 	} else { \
-		if (!opsz16) cpu_abort(CPU_PASSC -201); \
+		if (unlikely(!opsz16)) cpu_abort(CPU_PASSC -201); \
 		OptAddr meml1, meml2, meml3; \
 		uword sp = lreg32(4); \
 		/* ip */ TRY(translate16(CPU_PASSC &meml1, 1, SEG_SS, sp & sp_mask)); \
@@ -2402,7 +2408,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 #define RETFAR() RETFARw(0, limm, 0)
 
 #define HLT() \
-	if (cpu->cpl != 0) THROW(EX_GP, 0); \
+	if (unlikely(cpu->cpl != 0)) THROW(EX_GP, 0); \
 	cpu->halt = true; return true;
 #define NOP()
 
@@ -2431,12 +2437,12 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 	cpu->flags |= CF;
 
 #define CLI() \
-	if (get_IOPL(CPU_PASS) < cpu->cpl) THROW(EX_GP, 0); \
+	if (unlikely(get_IOPL(CPU_PASS) < cpu->cpl)) THROW(EX_GP, 0); \
 	cpu->flags &= ~IF;
 
 /* STI: interrupts enabled at the end of the **next** instruction */
 #define STI() \
-	if (get_IOPL(CPU_PASS) < cpu->cpl) THROW(EX_GP, 0); \
+	if (unlikely(get_IOPL(CPU_PASS) < cpu->cpl)) THROW(EX_GP, 0); \
 	cpu->flags |= IF; \
 	if (cpu->intr || stepcount < 2) stepcount = 2;
 
@@ -2515,7 +2521,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 #define POP() if (opsz16) { POP_helper(16) } else { POP_helper(32) }
 
 #define PUSHF() \
-	if ((cpu->flags & VM) && get_IOPL(CPU_PASS) < 3) THROW(EX_GP, 0); \
+	if (unlikely((cpu->flags & VM) && get_IOPL(CPU_PASS) < 3)) THROW(EX_GP, 0); \
 	if (opsz16) { \
 		uword sp = lreg32(4); \
 		TRY(translate16(CPU_PASSC &meml, 2, SEG_SS, (sp - 2) & sp_mask)); \
@@ -2538,7 +2544,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 #define EFLAGS_MASK (cpu->flags_mask)
 
 #define POPF() \
-	if ((cpu->flags & VM) && get_IOPL(CPU_PASS) < 3) THROW(EX_GP, 0); \
+	if (unlikely((cpu->flags & VM) && get_IOPL(CPU_PASS) < 3)) THROW(EX_GP, 0); \
 	uword mask = VM; \
 	if (cpu->cr0 & 1) { \
 		if (cpu->cpl > 0) mask |= IOPL; \
@@ -2946,7 +2952,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 	if (rep == 0) { \
 		if (adsz16) { indxstdi(BIT, 16) } else { indxstdi(BIT, 32) } \
 	} else { \
-		if (rep != 1) THROW0(EX_UD); \
+		if (unlikely(rep != 1)) THROW0(EX_UD); \
 		if (adsz16) { INS_helper2(BIT, 16) } else { INS_helper2(BIT, 32) } \
 	}
 
@@ -3010,7 +3016,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 	if (rep == 0) { \
 		if (adsz16) { ldsioutdx(BIT, 16) } else { ldsioutdx(BIT, 32) } \
 	} else { \
-		if (rep != 1) THROW0(EX_UD); \
+		if (unlikely(rep != 1)) THROW0(EX_UD); \
 		if (adsz16) { \
 			OUTS_helper2(BIT, 16) \
 		} else { \
@@ -3301,7 +3307,7 @@ static bool enter_helper(CPU_PARAMC bool opsz16, uword sp_mask,
 	store32(CPU_PASSC &meml2, cpu->idt.base);
 
 #define LXXX(addr) \
-	if (cpu->cpl != 0) THROW(EX_GP, 0); \
+	if (unlikely(cpu->cpl != 0)) THROW(EX_GP, 0); \
 	OptAddr meml1, meml2; \
 	TRY(translate16(CPU_PASSC &meml1, 1, curr_seg, addr)); \
 	TRY(translate32(CPU_PASSC &meml2, 1, curr_seg, addr + 2)); \
@@ -3320,14 +3326,14 @@ static bool enter_helper(CPU_PARAMC bool opsz16, uword sp_mask,
 	cpu->idt.limit = limit;
 
 #define LLDT(a, la, sa) \
-	if (cpu->cpl != 0) THROW(EX_GP, 0); \
+	if (unlikely(cpu->cpl != 0)) THROW(EX_GP, 0); \
 	TRY(set_seg(CPU_PASSC SEG_LDT, la(a)));
 
 #define SLDT(a, la, sa) \
 	sa(a, cpu->seg[SEG_LDT].sel);
 
 #define LTR(a, la, sa) \
-	if (cpu->cpl != 0) THROW(EX_GP, 0); \
+	if (unlikely(cpu->cpl != 0)) THROW(EX_GP, 0); \
 	TRY(set_seg(CPU_PASSC SEG_TR, la(a)));
 
 #define STR(a, la, sa) \
@@ -3354,7 +3360,7 @@ static bool enter_helper(CPU_PARAMC bool opsz16, uword sp_mask,
 	saddr(addr, cpu->cr0 & 0xffff);
 
 #define LMSW(addr, laddr, saddr) \
-	if (cpu->cpl != 0) THROW(EX_GP, 0); \
+	if (unlikely(cpu->cpl != 0)) THROW(EX_GP, 0); \
 	cpu->cr0 = (cpu->cr0 & ((~0xf) | 1)) | (laddr(addr) & 0xf);
 
 noinline static bool __LSEGd_helper(CPU_PARAMC int adsz16, int seg, int reg, int curr_seg, uword addr)
@@ -3420,7 +3426,7 @@ static bool check_ioperm(CPU_PARAMC int port, int bit)
 		}
 	}
 
-	if (!allow) THROW(EX_GP, 0);
+	if (unlikely(!allow)) THROW(EX_GP, 0);
 	return true;
 }
 
@@ -3458,7 +3464,7 @@ static bool check_ioperm(CPU_PARAMC int port, int bit)
 	cpu->cr0 &= ~(1 << 3);
 
 #define ESC() \
-	if (cpu->cr0 & 0xc) THROW0(EX_NM); \
+	if (unlikely(cpu->cr0 & 0xc)) THROW0(EX_NM); \
 	else { \
 		TRY(fetch8(CPU_PASSC &modrm)); \
 		int mod = modrm >> 6; \
@@ -3479,7 +3485,7 @@ static bool check_ioperm(CPU_PARAMC int port, int bit)
 	}
 
 #define WAIT() \
-	if ((cpu->cr0 & 0xa) == 0xa) THROW0(EX_NM);
+	if (unlikely((cpu->cr0 & 0xa) == 0xa)) THROW0(EX_NM);
 
 // ...
 noinline static void __AAD_helper(CPU_PARAMC u8 i)
@@ -3612,7 +3618,7 @@ static bool larsl_helper(CPU_PARAMC int sel, uword *ar, uword *sl, int *zf)
 	CPU_VAR;
 	sel = sel & 0xffff;
 
-	if (!(cpu->cr0 & 1) || (cpu->flags & VM))
+	if (unlikely(!(cpu->cr0 & 1) || (cpu->flags & VM)))
 		THROW0(EX_UD);
 
 	if ((sel & ~0x3) == 0) {
@@ -3669,7 +3675,7 @@ static bool verrw_helper(CPU_PARAMC int sel, int wr, int *zf)
 	CPU_VAR;
 	sel = sel & 0xffff;
 
-	if (!(cpu->cr0 & 1) || (cpu->flags & VM))
+	if (unlikely(!(cpu->cr0 & 1) || (cpu->flags & VM)))
 		THROW0(EX_UD);
 
 	if ((sel & ~0x3) == 0) {
@@ -3751,7 +3757,7 @@ static bool verrw_helper(CPU_PARAMC int sel, int wr, int *zf)
 	SET_BIT(cpu->flags, zf, ZF);
 
 #define ARPL(a, b, la, sa, lb, sb) \
-	if (!(cpu->cr0 & 1) || (cpu->flags & VM)) THROW0(EX_UD); \
+	if (unlikely(!(cpu->cr0 & 1) || (cpu->flags & VM))) THROW0(EX_UD); \
 	u16 dst = la(a); \
 	u16 src = lb(b); \
 	if ((dst & 3) < (src & 3)) { \
@@ -3771,7 +3777,7 @@ static bool verrw_helper(CPU_PARAMC int sel, int wr, int *zf)
 	TRY(translate ## BIT(CPU_PASSC &meml2, 3, curr_seg, addr1 + BIT / 8)); \
 	s ## BIT lo = load ## BIT(CPU_PASSC &meml1); \
 	s ## BIT hi = load ## BIT(CPU_PASSC &meml2); \
-	if (idx < lo || idx > hi) THROW0(EX_BR);
+	if (unlikely(idx < lo || idx > hi)) THROW0(EX_BR);
 #define BOUNDw(...) BOUND_helper(16, __VA_ARGS__)
 #define BOUNDd(...) BOUND_helper(32, __VA_ARGS__)
 
@@ -3784,13 +3790,15 @@ static bool verrw_helper(CPU_PARAMC int sel, int wr, int *zf)
 	cpu->cc.mask = CF | PF | AF | ZF | SF | OF; \
 	if (cpu->cc.dst == 0) sa(a, lb(b)); else sreg ## BIT(0, cpu->cc.src1); 
 
+
 #define XADD_helper(BIT, a, b, la, sa, lb, sb) \
 	u ## BIT dst = la(a); \
 	cpu->cc.src1 = sext ## BIT(la(a)); \
 	cpu->cc.src2 = sext ## BIT(lb(b)); \
 	cpu->cc.dst = sext ## BIT(cpu->cc.src1 + cpu->cc.src2); \
 	cpu->cc.op = CC_ADD; \
-	cpu->cc.mask = CF | PF | AF | ZF | SF | OF; \
+	cpu->cc.mask = PF | AF | ZF | SF | OF; \
+	cpu->flags = (cpu->flags & ~CF) | ((cpu->cc.dst < cpu->cc.src2) ? CF : 0); \
 	sb(b, dst); \
 	sa(a, cpu->cc.dst);
 
@@ -3901,7 +3909,7 @@ static uint64_t get_nticks()
 	if (cond) sa(a, lb(b));
 
 #define WRMSR() \
-	if (cpu->cpl != 0) THROW(EX_GP, 0); \
+	if (unlikely(cpu->cpl != 0)) THROW(EX_GP, 0); \
 	switch (REGi(1)) { \
 	case 0x174: cpu->sysenter.cs = REGi(0); break; \
 	case 0x176: cpu->sysenter.eip = REGi(0); break; \
@@ -3910,7 +3918,7 @@ static uint64_t get_nticks()
 	}
 
 #define RDMSR() \
-	if (cpu->cpl != 0) THROW(EX_GP, 0); \
+	if (unlikely(cpu->cpl != 0)) THROW(EX_GP, 0); \
 	switch (REGi(1)) { \
 	case 0x174: REGi(0) = cpu->sysenter.cs; REGi(2) = 0; break; \
 	case 0x176: REGi(0) = cpu->sysenter.eip; REGi(2) = 0; break; \
@@ -3935,14 +3943,14 @@ static void __sysenter(CPU_PARAMC int pl, int cs)
 }
 
 #define SYSENTER() \
-	if (!(cpu->cr0 & 1) || (cpu->sysenter.cs & ~0x3) == 0) THROW(EX_GP, 0); \
+	if (unlikely(!(cpu->cr0 & 1) || (cpu->sysenter.cs & ~0x3) == 0)) THROW(EX_GP, 0); \
 	cpu->flags &= ~(VM | IF); \
 	__sysenter(CPU_PASSC 0, cpu->sysenter.cs); \
 	REGi(4) = cpu->sysenter.esp; \
 	cpu->next_ip = cpu->sysenter.eip;
 
 #define SYSEXIT() \
-	if (!(cpu->cr0 & 1) || (cpu->sysenter.cs & ~0x3) == 0 || cpu->cpl) THROW(EX_GP, 0); \
+	if (unlikely(!(cpu->cr0 & 1) || (cpu->sysenter.cs & ~0x3) == 0 || cpu->cpl)) THROW(EX_GP, 0); \
 	__sysenter(CPU_PASSC 3, cpu->sysenter.cs + 16); \
 	REGi(4) = REGi(1); \
 	cpu->next_ip = REGi(2);
@@ -4375,7 +4383,7 @@ static bool IRAM_ATTR_CPU_EXEC1 pmcall(CPU_PARAMC bool opsz16, uword addr, int s
 	sel = sel & 0xffff;
 	uword sp_mask = cpu->seg[SEG_SS].flags & SEG_B_BIT ? 0xffffffff : 0xffff;
 
-	if ((sel & ~0x3) == 0) THROW(EX_GP, 0);
+	if (unlikely((sel & ~0x3) == 0)) THROW(EX_GP, 0);
 
 	uword w1, w2;
 	TRY(read_desc(CPU_PASSC sel, &w1, &w2));
@@ -4383,7 +4391,7 @@ static bool IRAM_ATTR_CPU_EXEC1 pmcall(CPU_PARAMC bool opsz16, uword addr, int s
 	int s = (w2 >> 12) & 1;
 	int dpl = (w2 >> 13) & 0x3;
 	int p = (w2 >> 15) & 1;
-	if (!p) {
+	if (unlikely(!p)) {
 //		dolog("pmcall: seg not present %04x\n", sel);
 		THROW(EX_NP, sel & ~0x3);
 	}
@@ -4391,14 +4399,14 @@ static bool IRAM_ATTR_CPU_EXEC1 pmcall(CPU_PARAMC bool opsz16, uword addr, int s
 	if (s) {
 		bool code = (w2 >> 8) & 0x8;
 		bool conforming = (w2 >> 8) & 0x4;
-		if (!code) THROW(EX_GP, sel & ~0x3);
+		if (unlikely(!code)) THROW(EX_GP, sel & ~0x3);
 		if (conforming) {
 			// call conforming code segment
-			if (dpl > cpu->cpl) THROW(EX_GP, sel & ~0x3);
+			if (unlikely(dpl > cpu->cpl)) THROW(EX_GP, sel & ~0x3);
 			sel = (sel & 0xfffc) | cpu->cpl;
 		} else {
 			// call nonconforming code segment
-			if ((sel & 0x3) > cpu->cpl || dpl != cpu->cpl)
+			if (unlikely((sel & 0x3) > cpu->cpl || dpl != cpu->cpl))
 				THROW(EX_GP, sel & ~0x3);
 			sel = (sel & 0xfffc) | cpu->cpl;
 		}
@@ -4430,7 +4438,7 @@ static bool IRAM_ATTR_CPU_EXEC1 pmcall(CPU_PARAMC bool opsz16, uword addr, int s
 		int gt = (w2 >> 8) & 0xf;
 		int wc = w2 & 31;
 
-		if (dpl < cpu->cpl || dpl < (sel & 3))
+		if (unlikely(dpl < cpu->cpl || dpl < (sel & 3)))
 			THROW(EX_GP, sel & ~0x3);
 
 		// only 32bit TSS is supported now
@@ -4449,25 +4457,25 @@ static bool IRAM_ATTR_CPU_EXEC1 pmcall(CPU_PARAMC bool opsz16, uword addr, int s
 			}
 		}
 
-		if (gt != 4 && gt != 12) {
+		if (unlikely(gt != 4 && gt != 12)) {
 			fprintf(stderr, "gate type = %d\n", gt);
 			cpu_abort(CPU_PASSC -203);
 		}
 
 		// call gates
 		// examine code segment selector in call gate descriptor
-		if ((newcs & ~0x3) == 0) THROW(EX_GP, 0);
+		if (unlikely((newcs & ~0x3) == 0)) THROW(EX_GP, 0);
 		uword neww2;
 		TRY(read_desc(CPU_PASSC newcs, NULL, &neww2));
 
 		// if not code segment
-		if (((neww2 >> 11) & 0x3) != 0x3)
+		if (unlikely(((neww2 >> 11) & 0x3) != 0x3))
 			THROW(EX_GP, newcs & ~0x3);
 
 		int newdpl = (neww2 >> 13) & 0x3;
 		int newp = (neww2 >> 15) & 1;
-		if (!newp) THROW(EX_NP, newcs & ~0x3);
-		if (newdpl > cpu->cpl) THROW(EX_GP, newcs & ~0x3);
+		if (unlikely(!newp)) THROW(EX_NP, newcs & ~0x3);
+		if (unlikely(newdpl > cpu->cpl)) THROW(EX_GP, newcs & ~0x3);
 
 		bool conforming = (neww2 >> 8) & 0x4;
 		bool gate16 = (gt == 4);
@@ -4600,7 +4608,7 @@ static int IRAM_ATTR_CPU_EXEC1 __call_isr_check_cs(CPU_PARAMC int sel, int ext, 
 		base = cpu->gdt.base;
 		limit = cpu->gdt.limit;
 	}
-	if ((sel & ~0x3) == 0 || off + 7 > limit)
+	if (unlikely((sel & ~0x3) == 0 || off + 7 > limit))
 		THROW(EX_GP, ext);
 
 	TRY1(translate_laddr(CPU_PASSC &meml, 1, base + off + 4, 4, 0));
@@ -4611,16 +4619,16 @@ static int IRAM_ATTR_CPU_EXEC1 __call_isr_check_cs(CPU_PARAMC int sel, int ext, 
 	int dpl = (w2 >> 13) & 0x3;
 	int p = (w2 >> 15) & 1;
 	*csdpl = dpl;
-	if (!s || !code || dpl > cpu->cpl)
+	if (unlikely(!s || !code || dpl > cpu->cpl))
 		THROW(EX_GP, (sel & ~0x3) | ext);
 
-	if (!p) THROW(EX_NP, sel & ~0x3);
+	if (unlikely(!p)) THROW(EX_NP, sel & ~0x3);
 
 	if (!conforming && dpl < cpu->cpl) {
 		if (!(cpu->flags & VM)) {
 			return 2;
 		} else {
-			if (dpl != 0) {
+			if (unlikely(dpl != 0)) {
 				dolog("__call_isr_check_cs fail1: %d %d %d\n", conforming, dpl, cpu->cpl);
 				THROW(EX_GP, (sel & ~0x3) | ext);
 			} else {
@@ -4628,7 +4636,7 @@ static int IRAM_ATTR_CPU_EXEC1 __call_isr_check_cs(CPU_PARAMC int sel, int ext, 
 			}
 		}
 	} else {
-		if (cpu->flags & VM) {
+		if (unlikely(cpu->flags & VM)) {
 			THROW(EX_GP, (sel & ~0x3) | ext);
 		} else {
 			if (conforming || dpl == cpu->cpl) {
@@ -4678,7 +4686,7 @@ static bool IRAM_ATTR call_isr(CPU_PARAMC int no, bool pusherr, int ext)
 	OptAddr meml;
 	uword base = cpu->idt.base;
 	int off = no << 3;
-	if (off + 7 > cpu->idt.limit) {
+	if (unlikely(off + 7 > cpu->idt.limit)) {
 		dolog("call_isr error0 %d %d\n", off, cpu->idt.limit);
 		THROW(EX_GP, off | 2 | ext);
 	}
@@ -4689,16 +4697,16 @@ static bool IRAM_ATTR call_isr(CPU_PARAMC int no, bool pusherr, int ext)
 	uword w2 = load32(CPU_PASSC &meml);
 
 	int gt = (w2 >> 8) & 0xf;
-	if (gt != 6 && gt != 7 && gt != 0xe && gt != 0xf && gt != 5) {
+	if (unlikely(gt != 6 && gt != 7 && gt != 0xe && gt != 0xf && gt != 5)) {
 //		dolog("call_isr error1 gt=%d\n", gt);
 		THROW(EX_GP, off | 2 | ext);
 	}
 
 	int dpl = (w2 >> 13) & 0x3;
-	if (!ext && dpl < cpu->cpl) THROW(EX_GP, off | 2);
+	if (unlikely(!ext && dpl < cpu->cpl)) THROW(EX_GP, off | 2);
 
 	int p = (w2 >> 15) & 1;
-	if (!p) {
+	if (unlikely(!p)) {
 		dolog("call_isr error3\n");
 		THROW(EX_NP, off | 2 | ext);
 	}
@@ -4844,15 +4852,15 @@ static bool IRAM_ATTR call_isr(CPU_PARAMC int no, bool pusherr, int ext)
 	}
 	case 3: /* from v8086 */ {
 //		dolog("int from v8086\n");
-		if (csdpl != 0) cpu_abort(CPU_PASSC -205);
-		if (gate16) cpu_abort(CPU_PASSC -206);
+		if (unlikely(csdpl != 0)) cpu_abort(CPU_PASSC -205);
+		if (unlikely(gate16)) cpu_abort(CPU_PASSC -206);
 //		dolog("call_isr %d %x PVL %d => 0\n", no, no, cpu->cpl, csdpl);
 		OptAddr msp0, mss0;
 		int newpl = 0;
 		uword oldss = cpu->seg[SEG_SS].sel;
 		uword oldsp = REGi(4);
 		uword newss, newsp;
-		if (!(cpu->seg[SEG_TR].flags & 0x8)) cpu_abort(CPU_PASSC -207);
+		if (unlikely(!(cpu->seg[SEG_TR].flags & 0x8))) cpu_abort(CPU_PASSC -207);
 		TRY(translate(CPU_PASSC &msp0, 1, SEG_TR, 4 + 8 * newpl, 4, 0));
 		TRY(translate(CPU_PASSC &mss0, 1, SEG_TR, 8 + 8 * newpl, 4, 0));
 		newsp = load32(CPU_PASSC &msp0);
@@ -4930,7 +4938,7 @@ static bool __pmiret_check_cs_same(CPU_PARAMC int sel)
 {
 	CPU_VAR;
 	sel = sel & 0xffff;
-	if ((sel & ~0x3) == 0) {
+	if (unlikely((sel & ~0x3) == 0)) {
 		dolog("__pmiret_check_cs_same: sel %04x\n", sel);
 		THROW(EX_GP, sel & ~0x3);
 	}
@@ -4943,15 +4951,15 @@ static bool __pmiret_check_cs_same(CPU_PARAMC int sel)
 	int dpl = (w2 >> 13) & 0x3;
 	int p = (w2 >> 15) & 1;
 
-	if (!s || !code) THROW(EX_GP, sel & ~0x3);
+	if (unlikely(!s || !code)) THROW(EX_GP, sel & ~0x3);
 
 	if (!conforming) {
-		if (dpl != cpu->cpl) THROW(EX_GP, sel & ~0x3);
+		if (unlikely(dpl != cpu->cpl)) THROW(EX_GP, sel & ~0x3);
 	} else {
-		if (dpl > cpu->cpl) THROW(EX_GP, sel & ~0x3);
+		if (unlikely(dpl > cpu->cpl)) THROW(EX_GP, sel & ~0x3);
 	}
 
-	if (!p) {
+	if (unlikely(!p)) {
 //		dolog("__pmiret_check_cs_same: seg not present %04x\n", sel);
 		THROW(EX_NP, sel & ~0x3);
 	}
@@ -4962,7 +4970,7 @@ static bool __pmiret_check_cs_outer(CPU_PARAMC int sel)
 {
 	CPU_VAR;
 	sel = sel & 0xffff;
-	if ((sel & ~0x3) == 0) {
+	if (unlikely((sel & ~0x3) == 0)) {
 		dolog("__pmiret_check_cs_outer: sel %04x\n", sel);
 		THROW(EX_GP, sel & ~0x3);
 	}
@@ -4976,15 +4984,15 @@ static bool __pmiret_check_cs_outer(CPU_PARAMC int sel)
 	int p = (w2 >> 15) & 1;
 	int rpl = sel & 3;
 
-	if (!s || !code) THROW(EX_GP, sel & ~0x3);
+	if (unlikely(!s || !code)) THROW(EX_GP, sel & ~0x3);
 
 	if (!conforming) {
-		if (dpl != rpl) THROW(EX_GP, sel & ~0x3);
+		if (unlikely(dpl != rpl)) THROW(EX_GP, sel & ~0x3);
 	} else {
-		if (dpl <= cpu->cpl) THROW(EX_GP, sel & ~0x3);
+		if (unlikely(dpl <= cpu->cpl)) THROW(EX_GP, sel & ~0x3);
 	}
 
-	if (!p) {
+	if (unlikely(!p)) {
 //		dolog("__pmiret_check_cs_outer: seg not present %04x\n", sel);
 		THROW(EX_NP, sel & ~0x3);
 	}
@@ -4995,15 +5003,15 @@ static bool IRAM_ATTR_CPU_EXEC1 pmret(CPU_PARAMC bool opsz16, int off, bool isir
 {
 	CPU_VAR;
 	if (isiret) {
-		if ((cpu->flags & VM)) THROW(EX_GP, 0);
-		if ((cpu->flags & NT)) {
+		if (unlikely(cpu->flags & VM)) THROW(EX_GP, 0);
+		if (unlikely(cpu->flags & NT)) {
 			OptAddr meml;
 			TRY(translate(CPU_PASSC &meml, 1, SEG_TR, 0, 2, 0));
 			int tssback = laddr16(&meml);
 			dolog("IRET NT: tss curr: %04x back: %04x\n",
 			      cpu->seg[SEG_TR].sel, tssback);
 			// win2000 needs it...
-			if (tssback == 0) THROW(EX_TS, 0);
+			if (unlikely(tssback == 0)) THROW(EX_TS, 0);
 			return task_switch(CPU_PASSC tssback, TS_IRET);
 		}
 		if (opsz16)
@@ -5049,11 +5057,11 @@ static bool IRAM_ATTR_CPU_EXEC1 pmret(CPU_PARAMC bool opsz16, int off, bool isir
 	}
 
 	if (isiret && (newflags & VM)) {
-		if (cpu->cpl != 0) cpu_abort(CPU_PASSC -208);
+		if (unlikely(cpu->cpl != 0)) cpu_abort(CPU_PASSC -208);
 		// return to v8086
 //		dolog("pmiret PVL %d => %d (vm) %04x:%08x\n", cpu->cpl, 3, newcs, newip);
 		OptAddr meml_vmes, meml_vmds, meml_vmfs, meml_vmgs;
-		if (opsz16) cpu_abort(CPU_PASSC -209);
+		if (unlikely(opsz16)) cpu_abort(CPU_PASSC -209);
 		TRY(translate(CPU_PASSC &meml4, 1, SEG_SS, (sp + 12) & sp_mask, 4, 0));
 		TRY(translate(CPU_PASSC &meml5, 1, SEG_SS, (sp + 16) & sp_mask, 4, 0));
 		TRY(translate(CPU_PASSC &meml_vmes, 1, SEG_SS, (sp + 20) & sp_mask, 4, 0));
@@ -5072,7 +5080,7 @@ static bool IRAM_ATTR_CPU_EXEC1 pmret(CPU_PARAMC bool opsz16, int off, bool isir
 		set_sp(laddr32(&meml4), 0xffffffff);
 	} else {
 		int rpl = newcs & 3;
-		if (rpl < cpu->cpl) THROW(EX_GP, newcs & ~0x3);
+		if (unlikely(rpl < cpu->cpl)) THROW(EX_GP, newcs & ~0x3);
 		if (rpl == cpu->cpl) {
 			// return to same level
 			TRY(__pmiret_check_cs_same(CPU_PASSC newcs));
@@ -5298,17 +5306,17 @@ CPUI386 *cpui386_new(int gen, char *phys_mem, long phys_mem_size, CPU_CB **cb)
 	}
 	cpu->gen = gen;
 
-	cpu->tlb.size = tlb_size;
+	cpu->tlb.size = TLB_SIZE;
 #ifdef BUILD_ESP32
 	{
 		extern void *pcmalloc(long size);
-		size_t tlb_bytes = sizeof(struct tlb_entry) * tlb_size;
+		size_t tlb_bytes = sizeof(struct tlb_entry) * TLB_SIZE;
 		cpu->tlb.tab = malloc(tlb_bytes);
 		if (!cpu->tlb.tab)
 			cpu->tlb.tab = pcmalloc(tlb_bytes);
 	}
 #else
-	cpu->tlb.tab = malloc(sizeof(struct tlb_entry) * tlb_size);
+	cpu->tlb.tab = malloc(sizeof(struct tlb_entry) * TLB_SIZE);
 #endif
 
 	cpu->phys_mem = (u8 *) phys_mem;
