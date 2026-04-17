@@ -15,6 +15,9 @@
 #define noinline
 #endif
 
+#define CPU_PREFETCH
+#define PREFETCH_SIZE 16
+
 #define I386_OPT1
 #ifndef __wasm__
 #define I386_OPT2
@@ -106,6 +109,14 @@ struct CPUI386 {
 	struct {
 		uword cs, eip, esp;
 	} sysenter;
+
+	#ifdef CPU_PREFETCH
+	struct {
+		int index;
+		int limit;
+		u8 cache[PREFETCH_SIZE];
+	} prefetch;
+	#endif
 };
 
 #ifdef STATIC_ALLOC
@@ -921,9 +932,24 @@ static bool IRAM_ATTR peek8_translated(CPU_PARAMC u8 *val, uword laddr){
 	return true;
 }
 
+#ifdef CPU_PREFETCH
+static bool IRAM_ATTR peek8_cached(CPU_PARAMC u8 *val){
+	CPU_VAR;
+	if(cpu->prefetch.index < cpu->prefetch.limit){
+		*val = cpu->prefetch.cache[cpu->prefetch.index];
+		return true;
+	}
+	return false;
+}
+#endif
+
 static bool IRAM_ATTR peek8(CPU_PARAMC u8 *val)
 {
 	CPU_VAR;
+	#ifdef CPU_PREFETCH
+	if(likely(peek8_cached(CPU_PASSC val))) return true;
+	#endif
+
 	uword laddr = cpu->seg[SEG_CS].base + cpu->next_ip;
 	if (likely((laddr ^ cpu->ifetch.laddr) < 4096)) {
 		*val = pload8(CPU_PASSC cpu->ifetch.xaddr ^ laddr);
@@ -936,6 +962,10 @@ static bool IRAM_ATTR peek8(CPU_PARAMC u8 *val)
 static bool IRAM_ATTR peek8a(CPU_PARAMC u8 *val)
 {
 	CPU_VAR;
+	#ifdef CPU_PREFETCH
+	if(likely(peek8_cached(CPU_PASSC val))) return true;
+	#endif
+	
 	if (likely(cpu->ifetch.paddr)) {
 		*val = pload8(CPU_PASSC cpu->ifetch.paddr);
 		return true;
@@ -944,9 +974,33 @@ static bool IRAM_ATTR peek8a(CPU_PARAMC u8 *val)
 	return true;
 }
 
+#ifdef CPU_PREFETCH
+
+static bool IRAM_ATTR fetch8_cached(CPU_PARAMC u8 *val){
+	CPU_VAR;
+	if(cpu->prefetch.index < cpu->prefetch.limit){
+		*val = cpu->prefetch.cache[cpu->prefetch.index];
+		++cpu->prefetch.index;
+		if (likely(cpu->ifetch.paddr)) cpu->ifetch.paddr++;
+		cpu->next_ip++;
+		return true;
+	}
+	return false;
+}
+
+#endif
+
+
 static bool IRAM_ATTR fetch8(CPU_PARAMC u8 *val)
 {
 	CPU_VAR;
+
+	#ifdef CPU_PREFETCH
+	if(likely(fetch8_cached(CPU_PASSC val))){
+		return true;
+	}
+	#endif
+
 	if (likely(cpu->ifetch.paddr)) {
 		*val = pload8(CPU_PASSC cpu->ifetch.paddr);
 		cpu->ifetch.paddr++;
@@ -957,6 +1011,8 @@ static bool IRAM_ATTR fetch8(CPU_PARAMC u8 *val)
 	cpu->next_ip++;
 	return true;
 }
+
+#ifndef CPU_PREFETCH
 
 static bool IRAM_ATTR fetch8pf(CPU_PARAMC u8 *val)
 {
@@ -975,9 +1031,31 @@ static bool IRAM_ATTR fetch8pf(CPU_PARAMC u8 *val)
 	return true;
 }
 
+#endif
+
+#ifdef CPU_PREFETCH
+static bool IRAM_ATTR fetch16_cached(CPU_PARAMC u16 *val){
+	CPU_VAR;
+	if(cpu->prefetch.index < cpu->prefetch.limit - 1){
+		*val = *(u16 *)&cpu->prefetch.cache[cpu->prefetch.index];
+		cpu->prefetch.index += 2;
+		if (likely(cpu->ifetch.paddr)) cpu->ifetch.paddr += 2;
+		cpu->next_ip += 2;
+		return true;
+	}
+	return false;
+}
+#endif
+
 static bool IRAM_ATTR fetch16(CPU_PARAMC u16 *val)
 {
 	CPU_VAR;
+	#ifdef CPU_PREFETCH
+	if(likely(fetch16_cached(CPU_PASSC val))){
+		return true;
+	}
+	#endif
+
 	if (likely(cpu->ifetch.paddr)) {
 		*val = pload16(CPU_PASSC cpu->ifetch.paddr);
 		cpu->ifetch.paddr += 2;
@@ -996,7 +1074,21 @@ static bool IRAM_ATTR fetch16(CPU_PARAMC u16 *val)
 	return true;
 }
 
-static bool IRAM_ATTR fetch32(CPU_PARAMC u32 *val)
+#ifdef CPU_PREFETCH
+static inline bool IRAM_ATTR fetch32_cached(CPU_PARAMC u32 *val){
+	CPU_VAR;
+	if(cpu->prefetch.index < cpu->prefetch.limit - 3){
+		*val = *(u32 *)&cpu->prefetch.cache[cpu->prefetch.index];
+		cpu->prefetch.index += 4;
+		if (likely(cpu->ifetch.paddr)) cpu->ifetch.paddr += 4;
+		cpu->next_ip += 4;
+		return true;
+	}
+	return false;
+}
+#endif
+
+static bool IRAM_ATTR fetch32_slow(CPU_PARAMC u32 *val)
 {
 	CPU_VAR;
 	if (likely(cpu->ifetch.paddr)) {
@@ -1016,6 +1108,134 @@ static bool IRAM_ATTR fetch32(CPU_PARAMC u32 *val)
 	cpu->next_ip += 4;
 	return true;
 }
+
+static inline bool IRAM_ATTR fetch32(CPU_PARAMC u32 *val){
+	#ifdef CPU_PREFETCH
+	if(likely(fetch32_cached(CPU_PASSC val))){
+		return true;
+	}else{
+		return fetch32_slow(val);
+	}
+	#endif
+}
+
+#ifdef CPU_PREFETCH
+static inline void IRAM_ATTR simple_copy(void* dest, void* src, int size)
+{
+    uint8_t *pdest = (uint8_t*) dest;
+    uint8_t *psrc = (uint8_t*) src;
+
+    int loops = (size / sizeof(uint32_t));
+    for(int index = 0; index < loops; ++index)
+    {
+        *((uint32_t*)pdest) = *((uint32_t*)psrc);
+        pdest += sizeof(uint32_t);
+        psrc += sizeof(uint32_t);
+    }
+
+    loops = (size % sizeof(uint32_t));
+    for (int index = 0; index < loops; ++index)
+    {
+        *pdest = *psrc;
+        ++pdest;
+        ++psrc;
+    }
+}
+
+
+static inline void IRAM_ATTR fill_prefetch_from(CPU_PARAMC uword addr){
+	CPU_VAR;
+	// int fetched = 0;
+	// while(cpu->prefetch.index + fetched < PREFETCH_SIZE){
+	// 	int remain = PREFETCH_SIZE - (cpu->prefetch.index + fetched);
+	// 	if(remain >= 4){
+	// 		*(u32*)&cpu->prefetch.cache[cpu->prefetch.index + fetched] = pload32(CPU_PASSC addr + cpu->prefetch.index + fetched);
+	// 		fetched += 4;
+	// 	}else if(remain >= 2){
+	// 		*(u16*)&cpu->prefetch.cache[cpu->prefetch.index + fetched] = pload16(CPU_PASSC addr + cpu->prefetch.index + fetched);
+	// 		fetched += 2;
+	// 	}else{
+	// 		*(u8*)&cpu->prefetch.cache[cpu->prefetch.index + fetched] = pload8(CPU_PASSC addr + cpu->prefetch.index + fetched);
+	// 		fetched += 1;
+	// 	}
+	// }
+	simple_copy(&cpu->prefetch.cache[cpu->prefetch.index], &cpu->phys_mem[addr + cpu->prefetch.index], PREFETCH_SIZE - cpu->prefetch.index);
+	cpu->prefetch.limit = PREFETCH_SIZE;
+	cpu->prefetch.index = 0;
+}
+
+static inline void drop_prefetch(CPU_PARAM){
+	CPU_VAR;
+	cpu->prefetch.index = 0;
+	cpu->prefetch.limit = 0;
+}
+
+static void IRAM_ATTR fill_prefetch(CPU_PARAM){
+	CPU_VAR;
+	
+	uword laddr = cpu->seg[SEG_CS].base + cpu->next_ip;
+	if (likely((laddr ^ cpu->ifetch.laddr) < (PREFETCH_SIZE - cpu->prefetch.index))) {
+		uword paddr = cpu->ifetch.xaddr ^ laddr;
+		cpu->ifetch.paddr = paddr;
+	}
+
+	// printf("PREFETCH BEGIN %d %d\n", cpu->prefetch.index, cpu->prefetch.limit);
+	if(cpu->prefetch.index < cpu->prefetch.limit){
+		int bytesToKeep = cpu->prefetch.limit - cpu->prefetch.index;
+		int newIndex = cpu->prefetch.limit - cpu->prefetch.index;
+		// printf("PREFETCH: Kept %d bytes from last. New index: %d\n", bytesToKeep, newIndex);
+		simple_copy(&cpu->prefetch.cache[0], &cpu->prefetch.cache[cpu->prefetch.index], bytesToKeep);
+		cpu->prefetch.index = newIndex;
+		//adjust = 1;
+	}
+
+	// if(unlikely(in_iomem(cpu->ifetch.paddr) || in_iomem(cpu->ifetch.paddr + (PREFETCH_SIZE - cpu->prefetch.index)))){
+	// 	drop_prefetch(CPU_PASS);
+	// 	return;
+	// }
+
+	if (cpu->ifetch.paddr){
+		// printf("PREFETCH: Filling from physical addr: %x\n", cpu->ifetch.paddr);
+		fill_prefetch_from(CPU_PASSC cpu->ifetch.paddr);
+	}else{
+		// printf("PREFETCH: Complex fill from: %x\n", cpu->next_ip + cpu->prefetch.index);
+		int fetched = 0;
+		while(cpu->prefetch.index + fetched < PREFETCH_SIZE){
+			int remain = PREFETCH_SIZE - (cpu->prefetch.index + fetched);
+
+			OptAddr res;
+			translate(CPU_PASSC &res, 1, SEG_CS, cpu->next_ip + cpu->prefetch.index + fetched, remain, cpu->cpl);
+			if(likely(res.res == ADDR_OK1)){
+				// printf("PREFETCH: ADDR1: %x\n", res.addr1);
+				cpu->prefetch.index += fetched;
+				fill_prefetch_from(CPU_PASSC res.addr1 - cpu->prefetch.index);
+				return;
+			}
+
+			translate32(CPU_PASSC &res, 1, SEG_CS, cpu->next_ip + cpu->prefetch.index + fetched);
+			if(remain >= 4){
+				*(u32*)&cpu->prefetch.cache[cpu->prefetch.index + fetched] = load32(CPU_PASSC &res);
+				fetched += 4;
+			}else if(remain >= 2){
+				*(u16*)&cpu->prefetch.cache[cpu->prefetch.index + fetched] = load16(CPU_PASSC &res);
+				fetched += 2;
+			}else{
+				*(u8*)&cpu->prefetch.cache[cpu->prefetch.index + fetched] = load8(CPU_PASSC &res);
+				fetched += 1;
+			}
+		}
+		cpu->prefetch.limit = cpu->prefetch.index + fetched;
+		cpu->prefetch.index = 0;
+	}
+	// printf("PREFETCH: Content: ");
+	// for(int i = 0; i < cpu->prefetch.limit; ++i){
+	// 	printf("%02x ", cpu->prefetch.cache[i]);
+	// }
+	// printf("\nPREFETCH END\n");
+}
+#else
+static inline void drop_prefetch(CPU_PARAM) {}
+#endif
 
 /* insts decode && execute */
 static bool modsib32(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
@@ -1805,6 +2025,7 @@ noinline void IRAM_ATTR try_jcc8(CPU_PARAM)
 		if ((op & ~1) == 0x74) {
 			if ((cpu->cc.dst == 0) ^ (op & 1)) {
 				sword d = sext8(pload8(CPU_PASSC cpu->ifetch.paddr + 1));
+				drop_prefetch(CPU_PASS);
 				cpu->next_ip += d + 2;
 			}
 		}
@@ -2375,6 +2596,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 		cpu->cc.mask = 0; \
 		set_sp(sp + 6, sp_mask); \
 		cpu->next_ip = newip; \
+		drop_prefetch(CPU_PASS); \
 	} \
 	if (cpu->intr && (cpu->flags & IF)) return true;
 
@@ -2403,6 +2625,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 			set_sp(sp + 8 + li(i), sp_mask); \
 			cpu->next_ip = newip; \
 		} \
+		drop_prefetch(CPU_PASS); \
 	}
 
 #define RETFAR() RETFARw(0, limm, 0)
@@ -3029,6 +3252,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 
 #define JCXZb(i, li, _) \
 	sword d = sext8(li(i)); \
+	drop_prefetch(CPU_PASS); \
 	if (adsz16) { \
 		if (lreg16(1) == 0) cpu->next_ip += d; \
 	} else { \
@@ -3037,6 +3261,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 
 #define LOOPb(i, li, _) \
 	sword d = sext8(li(i)); \
+	drop_prefetch(CPU_PASS); \
 	if (adsz16) { \
 		sreg16(1, lreg16(1) - 1); \
 		if (lreg16(1)) cpu->next_ip += d; \
@@ -3047,6 +3272,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 
 #define LOOPEb(i, li, _) \
 	sword d = sext8(li(i)); \
+	drop_prefetch(CPU_PASS); \
 	if (adsz16) { \
 		sreg16(1, lreg16(1) - 1); \
 		if (lreg16(1) && get_ZF(CPU_PASS)) cpu->next_ip += d; \
@@ -3057,6 +3283,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 
 #define LOOPNEb(i, li, _) \
 	sword d = sext8(li(i)); \
+	drop_prefetch(CPU_PASS); \
 	if (adsz16) { \
 		sreg16(1, lreg16(1) - 1); \
 		if (lreg16(1) && !get_ZF(CPU_PASS)) cpu->next_ip += d; \
@@ -3088,6 +3315,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 
 #define JCC_common(d) \
 	COND() \
+	drop_prefetch(CPU_PASS); \
 	if (cond) cpu->next_ip += d;
 
 #define SETCCb(a, la, sa) \
@@ -3108,20 +3336,25 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 
 #define JMPb(i, li, _) \
 	sword d = sext8(li(i)); \
+	drop_prefetch(CPU_PASS); \
 	cpu->next_ip += d;
 
 #define JMPw(i, li, _) \
 	sword d = sext16(li(i)); \
+	drop_prefetch(CPU_PASS); \
 	cpu->next_ip += d;
 
 #define JMPd(i, li, _) \
 	sword d = sext32(li(i)); \
+	drop_prefetch(CPU_PASS); \
 	cpu->next_ip += d;
 
 #define JMPABSw(i, li, _) \
-	cpu->next_ip = li(i);
+	drop_prefetch(CPU_PASS); \
+	cpu->next_ip = li(i); 
 
 #define JMPABSd(i, li, _) \
+	drop_prefetch(CPU_PASS); \
 	cpu->next_ip = li(i);
 
 #define JMPFAR(addr, seg) \
@@ -3129,6 +3362,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 		TRY(pmcall(CPU_PASSC opsz16, addr, seg, true)); \
 	} else { \
 	TRY(set_seg(CPU_PASSC SEG_CS, seg)); \
+	drop_prefetch(CPU_PASS); \
 	cpu->next_ip = addr; \
 	}
 
@@ -3152,6 +3386,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 		saddr32(&meml2, cpu->next_ip); \
 	} \
 	TRY(set_seg(CPU_PASSC SEG_CS, seg)); \
+	drop_prefetch(CPU_PASS); \
 	cpu->next_ip = addr; \
 	}
 
@@ -3161,6 +3396,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 	TRY(translate16(CPU_PASSC &meml, 2, SEG_SS, (sp - 2) & sp_mask)); \
 	set_sp(sp - 2, sp_mask); \
 	saddr16(&meml, cpu->next_ip); \
+	drop_prefetch(CPU_PASS); \
 	cpu->next_ip += d;
 
 #define CALLd(i, li, _) \
@@ -3169,6 +3405,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 	TRY(translate32(CPU_PASSC &meml, 2, SEG_SS, (sp - 4) & sp_mask)); \
 	set_sp(sp - 4, sp_mask); \
 	saddr32(&meml, cpu->next_ip); \
+	drop_prefetch(CPU_PASS); \
 	cpu->next_ip += d;
 
 #define CALLABSw(i, li, _) \
@@ -3177,6 +3414,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 	TRY(translate16(CPU_PASSC &meml, 2, SEG_SS, (sp - 2) & sp_mask)); \
 	set_sp(sp - 2, sp_mask); \
 	saddr16(&meml, cpu->next_ip); \
+	drop_prefetch(CPU_PASS); \
 	cpu->next_ip = nip;
 
 #define CALLABSd(i, li, _) \
@@ -3185,6 +3423,7 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 	TRY(translate32(CPU_PASSC &meml, 2, SEG_SS, (sp - 4) & sp_mask)); \
 	set_sp(sp - 4, sp_mask); \
 	saddr32(&meml, cpu->next_ip); \
+	drop_prefetch(CPU_PASS); \
 	cpu->next_ip = nip;
 
 #define RETw(i, li, _) \
@@ -3192,11 +3431,13 @@ static bool call_isr(CPU_PARAMC int no, bool pusherr, int ext);
 		uword sp = lreg32(4); \
 		TRY(translate16(CPU_PASSC &meml, 1, SEG_SS, sp & sp_mask)); \
 		set_sp(sp + 2 + li(i), sp_mask); \
+		drop_prefetch(CPU_PASS); \
 		cpu->next_ip = laddr16(&meml); \
 	} else { \
 		uword sp = lreg32(4); \
 		TRY(translate32(CPU_PASSC &meml, 1, SEG_SS, sp & sp_mask)); \
 		set_sp(sp + 4 + li(i), sp_mask); \
+		drop_prefetch(CPU_PASS); \
 		cpu->next_ip = laddr32(&meml); \
 	}
 
@@ -3947,12 +4188,14 @@ static void __sysenter(CPU_PARAMC int pl, int cs)
 	cpu->flags &= ~(VM | IF); \
 	__sysenter(CPU_PASSC 0, cpu->sysenter.cs); \
 	REGi(4) = cpu->sysenter.esp; \
+	drop_prefetch(CPU_PASS); \
 	cpu->next_ip = cpu->sysenter.eip;
 
 #define SYSEXIT() \
 	if (unlikely(!(cpu->cr0 & 1) || (cpu->sysenter.cs & ~0x3) == 0 || cpu->cpl)) THROW(EX_GP, 0); \
 	__sysenter(CPU_PASSC 3, cpu->sysenter.cs + 16); \
 	REGi(4) = REGi(1); \
+	drop_prefetch(CPU_PASS); \
 	cpu->next_ip = REGi(2);
 
 #if defined(I386_ENABLE_MMX) || defined(I386_ENABLE_SSE)
@@ -4019,7 +4262,14 @@ static bool IRAM_ATTR_CPU_EXEC1 cpu_exec1(CPU_PARAMC int stepcount)
 
 	if (code16) cpu->next_ip &= 0xffff;
 	cpu->ip = cpu->next_ip;
+	
+	#ifdef CPU_PREFETCH
+	fill_prefetch(CPU_PASS);
+	TRY(fetch8(CPU_PASSC &b1));
+	#else
 	TRY(fetch8pf(CPU_PASSC &b1));
+	#endif
+
 	cpu->cycle++;
 
 #ifndef I386_OPT1
@@ -4358,6 +4608,7 @@ static bool task_switch(CPU_PARAMC int tss, int sw_type)
 	}
 
 	TRY1(translate(CPU_PASSC &meml, 1, SEG_TR, 0x20, 4, 0));
+	drop_prefetch(CPU_PASS);
 	cpu->next_ip = load32(CPU_PASSC &meml);
 
 	TRY1(translate(CPU_PASSC &meml, 1, SEG_TR, 0x24, 4, 0));
@@ -4431,6 +4682,7 @@ static bool IRAM_ATTR_CPU_EXEC1 pmcall(CPU_PARAMC bool opsz16, uword addr, int s
 //		if ((sel & 3) != cpu->cpl)
 //			dolog("pmcall PVL %d => %d\n", cpu->cpl, sel & 3);
 		TRY1(set_seg(CPU_PASSC SEG_CS, sel));
+		drop_prefetch(CPU_PASS);
 		cpu->next_ip = addr;
 	} else {
 		int newcs = w1 >> 16;
@@ -4584,6 +4836,7 @@ static bool IRAM_ATTR_CPU_EXEC1 pmcall(CPU_PARAMC bool opsz16, uword addr, int s
 
 		TRY1(set_seg(CPU_PASSC SEG_CS, newcs));
 
+		drop_prefetch(CPU_PASS);
 		cpu->next_ip = newip;
 	}
 	return true;
@@ -4652,6 +4905,7 @@ static int IRAM_ATTR_CPU_EXEC1 __call_isr_check_cs(CPU_PARAMC int sel, int ext, 
 static bool IRAM_ATTR call_isr(CPU_PARAMC int no, bool pusherr, int ext)
 {
 	CPU_VAR;
+	drop_prefetch(CPU_PASS);
 	if (!(cpu->cr0 & 1)) {
 		/* REAL-ADDRESS-MODE */
 		uword sp_mask = cpu->seg[SEG_SS].flags & SEG_B_BIT ? 0xffffffff : 0xffff;
@@ -5071,6 +5325,7 @@ static bool IRAM_ATTR_CPU_EXEC1 pmret(CPU_PARAMC bool opsz16, int off, bool isir
 		cpu->flags = newflags;
 		TRY1(set_seg(CPU_PASSC SEG_CS, newcs));
 		set_sp(sp + 12, sp_mask);
+		drop_prefetch(CPU_PASS);
 		cpu->next_ip = newip;
 		TRY1(set_seg(CPU_PASSC SEG_SS, laddr32(&meml5)));
 		TRY1(set_seg(CPU_PASSC SEG_ES, laddr32(&meml_vmes)));
@@ -5094,6 +5349,7 @@ static bool IRAM_ATTR_CPU_EXEC1 pmret(CPU_PARAMC bool opsz16, int off, bool isir
 			} else {
 				set_sp(sp + 8 + off, sp_mask);
 			}
+			drop_prefetch(CPU_PASS);
 			cpu->next_ip = newip;
 		} else {
 			// return to outer level
@@ -5121,6 +5377,7 @@ static bool IRAM_ATTR_CPU_EXEC1 pmret(CPU_PARAMC bool opsz16, int off, bool isir
 			TRY1(set_seg(CPU_PASSC SEG_SS, newss));
 			uword newsp_mask = cpu->seg[SEG_SS].flags & SEG_B_BIT ? 0xffffffff : 0xffff;
 			set_sp(newsp, newsp_mask);
+			drop_prefetch(CPU_PASS);
 			cpu->next_ip = newip;
 			clear_segs(CPU_PASS);
 		}
@@ -5151,6 +5408,7 @@ void cpui386_step(CPU_PARAMC int stepcount)
 	}
 
 	int ret = cpu_exec1(CPU_PASSC stepcount);
+
 	cpu->ifetch.paddr = 0;
 	if (!ret) {
 		bool pusherr = false;
@@ -5159,6 +5417,7 @@ void cpui386_step(CPU_PARAMC int stepcount)
 		case EX_PF:
 			pusherr = true;
 		}
+		drop_prefetch(CPU_PASS);
 		cpu->next_ip = cpu->ip;
 
 		TRY1(call_isr(CPU_PASSC cpu->excno, pusherr, 1));
@@ -5249,6 +5508,8 @@ void cpui386_reset(CPU_PARAM)
 	cpu->sysenter.cs = 0;
 	cpu->sysenter.eip = 0;
 	cpu->sysenter.esp = 0;
+	
+	drop_prefetch(CPU_PASS);
 }
 
 void cpui386_reset_pm(CPU_PARAMC uint32_t start_addr)
@@ -5271,6 +5532,7 @@ void cpui386_reset_pm(CPU_PARAMC uint32_t start_addr)
 
 	cpu->seg[SEG_DS] = cpu->seg[SEG_SS];
 	cpu->seg[SEG_ES] = cpu->seg[SEG_SS];
+	drop_prefetch(CPU_PASS);
 }
 
 void IRAM_ATTR cpui386_raise_irq(CPU_PARAM)
