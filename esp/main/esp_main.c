@@ -96,11 +96,11 @@ typedef struct {
 	u8 *fb;
 } Console;
 
-#define NN 8
+#define NN 32
 Console *console_init(int width, int height)
 {
 	Console *c = malloc(sizeof(Console));
-	c->fb1 = fbmalloc(LCD_WIDTH * LCD_HEIGHT / NN * 2);
+	//c->fb1 = fbmalloc(LCD_WIDTH * LCD_HEIGHT / NN * 2);
 	if (globals.panel_fb) {
 		/* Zero-copy: VGA renders directly into the RGB DMA frame buffer */
 		c->fb = globals.panel_fb;
@@ -119,15 +119,15 @@ static void redraw(void *opaque,
 	for (int i = 0; i < NN; i++) {
 		uint16_t *src = (uint16_t *) s->fb;
 		src += LCD_WIDTH * LCD_HEIGHT / NN * i;
-		memcpy(s->fb1, src, LCD_WIDTH * LCD_HEIGHT / NN * 2);
+		//memcpy(s->fb1, src, LCD_WIDTH * LCD_HEIGHT / NN * 2);
 		lcd_draw(0, LCD_HEIGHT / NN * i,
 			 LCD_WIDTH, LCD_HEIGHT / NN * (i + 1),
-			 s->fb1);
+			 src);
 		//vga_step(s->pc->vga);
 		//usleep(900);
-		taskYIELD();
 	}
-	vTaskDelay(20 / portTICK_PERIOD_MS);
+	//taskYIELD();
+	//vTaskDelay(20 / portTICK_PERIOD_MS);
 }
 
 static void stub(void *opaque)
