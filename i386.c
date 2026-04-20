@@ -106,7 +106,7 @@ struct CPUI386 {
 	struct {
 		uword cs, eip, esp;
 	} sysenter;
-};
+}; __attribute__((aligned));
 
 #ifdef STATIC_ALLOC
 static CPUI386 theCPU;
@@ -667,7 +667,7 @@ static bool IRAM_ATTR translate_laddr(CPU_PARAMC OptAddr *res, int rwm, uword la
 	return true;
 }
 
-static bool IRAM_ATTR segcheck(CPU_PARAMC int rwm, int seg, uword addr, int size)
+static inline bool IRAM_ATTR segcheck(CPU_PARAMC int rwm, int seg, uword addr, int size)
 {
 	CPU_VAR;
 	if (cpu->cr0 & 1) {
@@ -1018,7 +1018,7 @@ static bool IRAM_ATTR fetch32(CPU_PARAMC u32 *val)
 }
 
 /* insts decode && execute */
-static bool modsib32(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
+static bool IRAM_ATTR modsib32(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
 {
 	CPU_VAR;
 	if (rm == 4) {
@@ -1044,11 +1044,13 @@ static bool modsib32(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
 		if (rm == 5 && *seg == -1)
 			*seg = SEG_SS;
 	}
-	if (mod == 1) {
+	switch(mod){
+	case 1:
 		u8 imm8;
 		TRY(fetch8(CPU_PASSC &imm8));
 		*addr += (s8) imm8;
-	} else if (mod == 2) {
+		break;
+	case 2:
 		u32 imm32;
 		TRY(fetch32(CPU_PASSC &imm32));
 		*addr += (s32) imm32;
@@ -1058,7 +1060,7 @@ static bool modsib32(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
 	return true;
 }
 
-static bool modsib16(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
+static bool IRAM_ATTR modsib16(CPU_PARAMC int mod, int rm, uword *addr, int *seg)
 {
 	CPU_VAR;
 	if (rm == 6 && mod == 0) {
