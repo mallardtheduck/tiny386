@@ -106,7 +106,7 @@ struct CPUI386 {
 	struct {
 		uword cs, eip, esp;
 	} sysenter;
-}; __attribute__((aligned));
+} __attribute__((aligned)); 
 
 #ifdef STATIC_ALLOC
 static CPUI386 theCPU;
@@ -332,7 +332,7 @@ enum {
 	CC_AND, CC_OR, CC_XOR,
 };
 
-static int get_CF(CPU_PARAM)
+static int IRAM_ATTR get_CF(CPU_PARAM)
 {
 	CPU_VAR;
 	if (cpu->cc.mask & CF) {
@@ -1078,14 +1078,17 @@ static bool IRAM_ATTR modsib16(CPU_PARAMC int mod, int rm, uword *addr, int *seg
 		case 6: *addr = REGi(5); break;
 		case 7: *addr = REGi(3); break;
 		}
-		if (mod == 1) {
+		switch(mod){
+		case 1:
 			u8 imm8;
 			TRY(fetch8(CPU_PASSC &imm8));
 			*addr += (s8) imm8;
-		} else if (mod == 2) {
+			break;
+		case 2:
 			u16 imm16;
 			TRY(fetch16(CPU_PASSC &imm16));
 			*addr += imm16;
+			break;
 		}
 		*addr &= 0xffff;
 	}
@@ -1104,14 +1107,14 @@ static bool IRAM_ATTR modsib16(CPU_PARAMC int mod, int rm, uword *addr, int *seg
 	return true;
 }
 
-static inline bool IRAM_ATTR modsib(CPU_PARAMC int adsz16, int mod, int rm, uword *addr, int *seg)
+static bool IRAM_ATTR modsib(CPU_PARAMC int adsz16, int mod, int rm, uword *addr, int *seg)
 {
 	CPU_VAR;
 	if (adsz16) return modsib16(CPU_PASSC mod, rm, addr, seg);
 	else return modsib32(CPU_PASSC mod, rm, addr, seg);
 }
 
-static bool IRAM_ATTR_CPU_EXEC1 read_desc(CPU_PARAMC int sel, uword *w1, uword *w2)
+static bool IRAM_ATTR read_desc(CPU_PARAMC int sel, uword *w1, uword *w2)
 {
 	CPU_VAR;
 	OptAddr meml;
@@ -1140,7 +1143,7 @@ static bool IRAM_ATTR_CPU_EXEC1 read_desc(CPU_PARAMC int sel, uword *w1, uword *
 	return true;
 }
 
-static bool IRAM_ATTR_CPU_EXEC1 set_seg(CPU_PARAMC int seg, int sel)
+static bool IRAM_ATTR set_seg(CPU_PARAMC int seg, int sel)
 {
 	CPU_VAR;
 	sel = sel & 0xffff;
@@ -1727,7 +1730,7 @@ static void clear_segs(CPU_PARAM)
 #define set_sp(v, mask) (sreg32(4, ((v) & mask) | (lreg32(4) & ~mask)))
 
 #define GEN___GE_helper(BIT) \
-static bool IRAM_ATTR __GE_helper ## BIT \
+static inline bool IRAM_ATTR __GE_helper ## BIT \
 (CPU_PARAMC int adsz16, int curr_seg, int *reg, u ## BIT *opr) \
 { \
 	CPU_VAR; \

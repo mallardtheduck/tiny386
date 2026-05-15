@@ -8,24 +8,17 @@
 
 #include "esp_log.h"
 #include "driver/gpio.h"
-#include "driver/i2c.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_rgb.h"
 #include "esp_lcd_touch_gt911.h"
+#include "i2c.h"
 
 #include "common.h"
 
 #define CONFIG_LCD43_LCD_TOUCH_CONTROLLER_GT911 0 // 1 initiates the touch, 0 closes the touch.
 
-#define I2C_MASTER_SCL_IO           9       /*!< GPIO number used for I2C master clock */
-#define I2C_MASTER_SDA_IO           8       /*!< GPIO number used for I2C master data  */
-#define I2C_MASTER_NUM              0       /*!< I2C master i2c port number, the number of i2c peripheral interfaces available will depend on the chip */
-#define I2C_MASTER_FREQ_HZ          400000                     /*!< I2C master clock frequency */
-#define I2C_MASTER_TX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
-#define I2C_MASTER_RX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
-#define I2C_MASTER_TIMEOUT_MS       1000
 
 #define GPIO_INPUT_IO_4    4
 #define GPIO_INPUT_PIN_SEL  1ULL<<GPIO_INPUT_IO_4
@@ -84,7 +77,6 @@ IRAM_ATTR static bool rgb_lcd_on_vsync_event(esp_lcd_panel_handle_t panel, const
     return 1;
 }
 
-#if CONFIG_LCD43_LCD_TOUCH_CONTROLLER_GT911
 /**
  * @brief I2C master initialization
  */
@@ -107,6 +99,8 @@ static esp_err_t i2c_master_init(void)
     // Install I2C driver
     return i2c_driver_install(i2c_master_port, i2c_conf.mode, 0, 0, 0);
 }
+
+#if CONFIG_LCD43_LCD_TOUCH_CONTROLLER_GT911
 
 // GPIO initialization
 void gpio_init(void)
@@ -204,9 +198,9 @@ esp_err_t waveshare_esp32_s3_rgb_lcd_init()
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle)); // Initialize the LCD panel
 
     esp_lcd_touch_handle_t tp_handle = NULL; // Declare a handle for the touch panel
-#if CONFIG_LCD43_LCD_TOUCH_CONTROLLER_GT911
     ESP_LOGI(TAG, "Initialize I2C bus"); // Log the initialization of the I2C bus
     i2c_master_init(); // Initialize the I2C master
+#if CONFIG_LCD43_LCD_TOUCH_CONTROLLER_GT911
     ESP_LOGI(TAG, "Initialize GPIO"); // Log GPIO initialization
     gpio_init(); // Initialize GPIO pins
     ESP_LOGI(TAG, "Initialize Touch LCD"); // Log touch LCD initialization
