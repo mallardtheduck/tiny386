@@ -17,6 +17,8 @@
 
 #include "common.h"
 
+volatile bool i2c_ok = false;
+
 #define CONFIG_LCD43_LCD_TOUCH_CONTROLLER_GT911 0 // 1 initiates the touch, 0 closes the touch.
 
 
@@ -88,16 +90,21 @@ static esp_err_t i2c_master_init(void)
         .mode = I2C_MODE_MASTER,
         .sda_io_num = I2C_MASTER_SDA_IO,
         .scl_io_num = I2C_MASTER_SCL_IO,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
+        .sda_pullup_en = GPIO_PULLUP_DISABLE,
+        .scl_pullup_en = GPIO_PULLUP_DISABLE,
         .master.clk_speed = I2C_MASTER_FREQ_HZ,
+        .clk_flags = 0
     };
 
     // Configure I2C parameters
     i2c_param_config(i2c_master_port, &i2c_conf);
 
     // Install I2C driver
-    return i2c_driver_install(i2c_master_port, i2c_conf.mode, 0, 0, 0);
+    esp_err_t ret = i2c_driver_install(i2c_master_port, i2c_conf.mode, 0, 0, 0);
+
+    i2c_ok = true;
+
+    return ret;
 }
 
 #if CONFIG_LCD43_LCD_TOUCH_CONTROLLER_GT911

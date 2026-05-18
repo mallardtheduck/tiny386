@@ -7,17 +7,47 @@
 
 #include "../../i8042.h"
 
+#define KEYBOARD_I2C_ADDRESS 0x5F
+#define SECONADRY_I2C_ADDRESS 0x6F
+
 #define KF_NORMAL 0
 #define KF_SHIFT 1
 #define KF_PREFIX_E0 2
+#define KF_ALT 4
+#define KF_CTRL 8
 
 #define ALT_TOGGLE_KEY 0xA6
 #define CTRL_TOGGLE_KEY 0xA7
+#define SHIFT_TOGGLE_KEY 0xA8
 
 #define KEY_ALT_SCANCODE 0x38
 #define KEY_CTRL_SCANCODE 0x1D
-
 #define KEY_SHIFT_SCANCODE 0x2A
+
+#define MOUSE_BIT_UP 	BIT(1)
+#define MOUSE_BIT_DOWN 	BIT(0)
+#define MOUSE_BIT_LEFT	BIT(3)
+#define MOUSE_BIT_RIGHT	BIT(2)
+#define MOUSE_BIT_BTN1	BIT(6)
+#define MOUSE_BIT_BTN2	BIT(5)
+#define MOUSE_BIT_CLICK	BIT(4)
+
+#define MIN_MOUSE_SPEED 2
+#define MAX_MOUSE_SPEED 20
+#define MOUSE_ACCEL_RATE 2
+
+#define BIT2VALUE(bt, by, va) (((bt) & (by)) ? (va) : 0)
+
+#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
+#define BYTE_TO_BINARY(byte)  \
+  ((byte) & 0x80 ? '1' : '0'), \
+  ((byte) & 0x40 ? '1' : '0'), \
+  ((byte) & 0x20 ? '1' : '0'), \
+  ((byte) & 0x10 ? '1' : '0'), \
+  ((byte) & 0x08 ? '1' : '0'), \
+  ((byte) & 0x04 ? '1' : '0'), \
+  ((byte) & 0x02 ? '1' : '0'), \
+  ((byte) & 0x01 ? '1' : '0') 
 
 typedef struct{
 	uint8_t key;
@@ -161,8 +191,17 @@ static key_conv keys[] = {
 
 	{0x8B, 0x53, KF_PREFIX_E0}, //Del
 
+	{0x8D, 0x3E, KF_ALT}, // FN+Q = Alt+F4
+	{0x8E, 0x3E, KF_CTRL}, // FN+W = Ctrl+F4
+
 	{0, 0, 0} //END
 };
+
+static bool alt_toggle = false;
+static bool ctrl_toggle = false;
+static bool shift_toggle = false;
+
+static key_conv *cur_key = NULL;
 
 static key_conv* get_conv(uint8_t key){
 	for(key_conv* ckey = keys; ckey->key != 0; ++ckey){
@@ -178,45 +217,106 @@ static void send_key(key_conv *key, int is_down){
 	if(key->flags & KF_PREFIX_E0){
 		ps2_put_keycode(globals.kbd, is_down, 0xE0);
 	}
+	if(key->flags & KF_ALT){
+		ps2_put_keycode(globals.kbd, is_down, KEY_ALT_SCANCODE);
+	}
+	if(key->flags & KF_CTRL){
+		ps2_put_keycode(globals.kbd, is_down, KEY_CTRL_SCANCODE);
+	}
 	ps2_put_keycode(globals.kbd, is_down, key->scancode);
 }
 
-static void i2c_task(void *arg){
-	bool alt = false;
-	bool ctrl = false;
+static void i2c_keyboard(){
+	if(cur_key){
+		send_key(cur_key, 0);
+		cur_key = NULL;
+		if(alt_toggle){
+			alt_toggle = !alt_toggle;
+			ps2_put_keycode(globals.kbd, alt_toggle, KEY_ALT_SCANCODE);
+		}
+		if(ctrl_toggle){
+			ctrl_toggle = !ctrl_toggle;
+			ps2_put_keycode(globals.kbd, ctrl_toggle, KEY_CTRL_SCANCODE);
+		}
+		if(shift_toggle){
+			shift_toggle = !shift_toggle;
+			ps2_put_keycode(globals.kbd, shift_toggle, KEY_SHIFT_SCANCODE);
+		}
+	}
+	uint8_t data_rd = 0;
+	i2c_master_read_from_device(I2C_MASTER_NUM, KEYBOARD_I2C_ADDRESS, &data_rd, 1, I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+	if(data_rd){
+		if(data_rd == ALT_TOGGLE_KEY){
+			alt_toggle = !alt_toggle;
+			ps2_put_keycode(globals.kbd, alt_toggle, KEY_ALT_SCANCODE);
+		} else if(data_rd == CTRL_TOGGLE_KEY){
+			ctrl_toggle = !ctrl_toggle;
+			ps2_put_keycode(globals.kbd, ctrl_toggle, KEY_CTRL_SCANCODE);
+		}else if(data_rd == SHIFT_TOGGLE_KEY){
+			shift_toggle = !shift_toggle;
+			ps2_put_keycode(globals.kbd, shift_toggle, KEY_SHIFT_SCANCODE);
+		}else{
+			key_conv *new_key = get_conv(data_rd);
+			if(new_key){
+				send_key(new_key, 1);
+				cur_key = new_key;
+			}
+		}
+	}
+}
+
+static void i2c_mouse(){
+	static int last_raw_dx = 0;
+	static int last_raw_dy = 0;
+	static int last_btn = 0;
+	static int cur_speed = MIN_MOUSE_SPEED;
+	static int move_counter = 0;
 	uint8_t data_rd;
-	key_conv *cur_key = NULL;
+	esp_err_t res1 = i2c_master_read_from_device(I2C_MASTER_NUM, SECONADRY_I2C_ADDRESS, &data_rd, 1, I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+	//printf("%x Mouse byte: " BYTE_TO_BINARY_PATTERN "\n", res1, BYTE_TO_BINARY(data_rd));
+	int raw_dx = BIT2VALUE(MOUSE_BIT_RIGHT, data_rd, 1) + BIT2VALUE(MOUSE_BIT_LEFT, data_rd, -1);
+	int raw_dy = BIT2VALUE(MOUSE_BIT_DOWN, data_rd, 1) + BIT2VALUE(MOUSE_BIT_UP, data_rd, -1);
+	bool leftBtn = (data_rd & MOUSE_BIT_BTN1) || (data_rd & MOUSE_BIT_CLICK);
+	bool rightBtn = (data_rd & MOUSE_BIT_BTN2);
+	int btn = (leftBtn ? 1 : 0) | (rightBtn ? 2 : 0);
+		if(raw_dx == last_raw_dx && raw_dy == last_raw_dy){
+		++move_counter;
+		if(move_counter > MOUSE_ACCEL_RATE && cur_speed < MAX_MOUSE_SPEED) ++cur_speed;
+	}else{
+		move_counter = 0;
+		cur_speed = MIN_MOUSE_SPEED;
+	}
+	int dx = raw_dx * cur_speed;
+	int dy = raw_dy * cur_speed;
+	if(dx || dy || btn != last_btn){
+		//printf("Mouse data: %d %d %d\n", dx, dy, btn);
+		ps2_mouse_event(globals.mouse, dx, dy, 0, btn);
+	}
+	last_raw_dx = raw_dx;
+	last_raw_dy = raw_dy;
+	last_btn = btn;
+}
+
+void probe(){
+	uint8_t data_rd = 0;
+	printf("I2C PROBE START\n");
+	for(uint8_t i = 0; i < 255; ++i){
+		esp_err_t res = i2c_master_read_from_device(I2C_MASTER_NUM, i, &data_rd, 1, I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+		if(res == ESP_OK){
+			printf("I2C: Device found at: %x (data:%x)\n", i, data_rd);
+		}
+	}
+	printf("I2C PROBE END\n");
+}
+
+static void i2c_task(void *arg){
+	while(!i2c_ok) taskYIELD();
+	//probe();
 	while(true){
-		if(cur_key){
-			send_key(cur_key, 0);
-			cur_key = NULL;
-			if(alt){
-				alt = !alt;
-				ps2_put_keycode(globals.kbd, alt, KEY_ALT_SCANCODE);
-			}
-			if(ctrl){
-				ctrl = !ctrl;
-				ps2_put_keycode(globals.kbd, ctrl, KEY_CTRL_SCANCODE);
-			}
-		}
-		i2c_master_read_from_device(I2C_MASTER_NUM, 0x5F, &data_rd, 1, I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
-		if(data_rd){
-			printf("I2C: READ: %x\n", data_rd);
-			if(data_rd == ALT_TOGGLE_KEY){
-				alt = !alt;
-				ps2_put_keycode(globals.kbd, alt, KEY_ALT_SCANCODE);
-			} else if(data_rd == CTRL_TOGGLE_KEY){
-				ctrl = !ctrl;
-				ps2_put_keycode(globals.kbd, ctrl, KEY_CTRL_SCANCODE);
-			}else{
-				key_conv *new_key = get_conv(data_rd);
-				if(new_key){
-					send_key(new_key, 1);
-					cur_key = new_key;
-				}
-			}
-		}
-		vTaskDelay(30 / portTICK_PERIOD_MS);
+		i2c_keyboard();
+		i2c_mouse();
+		taskYIELD();
+		//vTaskDelay(30 / portTICK_PERIOD_MS);
 	}
 }
 
